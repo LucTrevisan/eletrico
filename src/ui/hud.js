@@ -1,0 +1,199 @@
+/**
+ * HUD em HTML para desktop e celular (não aparece dentro do headset — em VR o
+ * equivalente é o painel 3D de ui/vrMenu.js).
+ * Só manipula o DOM; quem decide o que cada botão faz é o main.js via `bind()`.
+ */
+const $ = (id) => document.getElementById(id);
+
+export function createHud() {
+  const el = {
+    hud: $("hud"),
+    loader: $("loader"),
+    progress: $("progress"),
+    progressBar: $("progressBar"),
+    loaderStatus: $("loaderStatus"),
+    loaderActions: $("loaderActions"),
+    retryButton: $("retryButton"),
+    continueButton: $("continueButton"),
+    vrStatus: $("vrStatus"),
+    vrButton: $("vrButton"),
+    vehicleCard: $("vehicleCard"),
+    vehicleName: $("vehicleName"),
+    vehicleBadge: $("vehicleBadge"),
+    vehicleDims: $("vehicleDims"),
+    toast: $("toast"),
+    turntableButton: $("turntableButton"),
+    turntableLabel: $("turntableLabel"),
+    helpButton: $("helpButton"),
+    helpPanel: $("helpPanel"),
+    helpClose: $("helpClose"),
+    hint: $("hint"),
+    contextLost: $("contextLost"),
+    canvas: $("renderCanvas"),
+    xrayButton: $("xrayButton"),
+    tooltip: $("tooltip"),
+  };
+  const viewButtons = [...document.querySelectorAll("[data-view]")];
+  let handlers = {};
+  let toastTimer = null;
+
+  // ------------------------------------------------------------ eventos
+  for (const b of viewButtons) b.addEventListener("click", () => handlers.onView?.(b.dataset.view));
+  el.turntableButton.addEventListener("click", () => handlers.onToggleTurntable?.());
+  el.xrayButton.addEventListener("click", () => handlers.onToggleXRay?.());
+  el.vrButton.addEventListener("click", () => handlers.onEnterVR?.());
+  el.helpButton.addEventListener("click", () => setHelp(el.helpPanel.hidden));
+  el.helpClose.addEventListener("click", () => setHelp(false));
+  el.retryButton.addEventListener("click", () => window.location.reload());
+
+  const viewKeys = { 0: "hero", 1: "front", 2: "side", 3: "rear", 4: "top" };
+  window.addEventListener("keydown", (e) => {
+    if (e.target instanceof HTMLElement && e.target.closest("input, textarea, select")) return;
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    if (viewKeys[e.key]) handlers.onView?.(viewKeys[e.key]);
+    else if (e.key === " " && !(e.target instanceof HTMLButtonElement)) {
+      e.preventDefault();
+      handlers.onToggleTurntable?.();
+    } else if (e.key === "h" || e.key === "H") setHelp(el.helpPanel.hidden);
+    else if (e.key === "x" || e.key === "X") handlers.onToggleXRay?.();
+    else if (e.key === "Escape") {
+      setHelp(false);
+      handlers.onEscape?.();
+    }
+  });
+
+  // A dica some após a primeira interação com o canvas (ou depois de 12 s).
+  const dismissHint = () => el.hint.classList.add("is-hidden");
+  el.canvas.addEventListener("pointerdown", dismissHint, { once: true });
+  setTimeout(dismissHint, 12000);
+  if (window.matchMedia?.("(pointer: coarse)").matches) {
+    el.hint.textContent = "Arraste para girar · Faça pinça para aproximar";
+  }
+
+  function setHelp(open) {
+    el.helpPanel.hidden = !open;
+    el.helpButton.setAttribute("aria-expanded", String(open));
+  }
+
+  // ------------------------------------------------------------ API
+  return {
+    bind(h) {
+      handlers = h;
+    },
+
+    setProgress(fraction) {
+      if (fraction == null) {
+        el.progress.classList.add("is-indeterminate");
+        return;
+      }
+      el.progress.classList.remove("is-indeterminate");
+      const pct = Math.round(Math.min(1, Math.max(0, fraction)) * 100);
+      el.progressBar.style.width = `${pct}%`;
+      el.progress.setAttribute("aria-valuenow", String(pct));
+    },
+
+    setLoaderStatus(text) {
+      el.loaderStatus.textContent = text;
+    },
+
+    /** Mostra o erro no cartão de carregamento, com opção de seguir sem o modelo. */
+    showLoadError(message, { onContinue } = {}) {
+      el.loader.classList.add("has-error");
+      el.loaderStatus.textContent = message;
+      el.loaderActions.hidden = false;
+      el.continueButton.onclick = () => onContinue?.();
+    },
+
+    showFatal(err) {
+      el.loader.hidden = false;
+      el.loader.classList.add("has-error");
+      el.loaderStatus.textContent = `Não foi possível iniciar a experiência: ${err?.message || err}`;
+      el.loaderActions.hidden = false;
+      el.continueButton.hidden = true;
+    },
+
+    hideLoader() {
+      el.hud.hidden = false;
+      el.loader.classList.add("is-leaving");
+      setTimeout(() => (el.loader.hidden = true), 650);
+    },
+
+    /** checking | available | unavailable | in-xr | error */
+    setVR(state, reason = "") {
+      const labels = {
+        checking: "Verificando VR…",
+        available: "VR disponível",
+        unavailable: "Modo 3D",
+        "in-xr": "Em VR",
+        error: "VR indisponível",
+      };
+      el.vrStatus.dataset.state = state;
+      el.vrStatus.textContent = labels[state] ?? state;
+      el.vrStatus.title = reason;
+      el.vrStatus.hidden = state === "available";
+      el.vrButton.hidden = state !== "available";
+    },
+
+    setVehicle(info) {
+      if (!info) return;
+      el.vehicleCard.hidden = false;
+      el.vehicleName.textContent = info.label;
+      el.vehicleBadge.textContent = info.provisional ? "Modelo provisório" : "Modelo definitivo";
+      el.vehicleBadge.dataset.kind = info.provisional ? "provisional" : "final";
+      const fmt = (v) => `${v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m`;
+      el.vehicleDims.innerHTML = "";
+      for (const [label, value] of [
+        ["Comprimento", info.dims.length],
+        ["Largura", info.dims.width],
+        ["Altura", info.dims.height],
+      ]) {
+        const wrap = document.createElement("div");
+        const dt = document.createElement("dt");
+        const dd = document.createElement("dd");
+        dt.textContent = label;
+        dd.textContent = fmt(value);
+        wrap.append(dt, dd);
+        el.vehicleDims.append(wrap);
+      }
+    },
+
+    setActiveView(name) {
+      for (const b of viewButtons) b.setAttribute("aria-pressed", String(b.dataset.view === name));
+    },
+
+    setXRay(on) {
+      el.xrayButton.setAttribute("aria-pressed", String(on));
+    },
+
+    /** Dica que acompanha o mouse sobre uma peça. */
+    showTooltip(text, x, y) {
+      el.tooltip.textContent = text;
+      el.tooltip.hidden = false;
+      el.tooltip.style.transform = `translate(${Math.round(x + 16)}px, ${Math.round(y + 18)}px)`;
+    },
+
+    hideTooltip() {
+      el.tooltip.hidden = true;
+    },
+
+    closeHelp() {
+      setHelp(false);
+    },
+
+    setTurntable(on) {
+      el.turntableButton.setAttribute("aria-pressed", String(on));
+      el.turntableLabel.textContent = on ? "Girando" : "Girar";
+    },
+
+    toast(message, ms = 3200) {
+      el.toast.textContent = message;
+      el.toast.classList.add("is-visible");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.toast.classList.remove("is-visible"), ms);
+    },
+
+    setContextLost(lost) {
+      el.contextLost.hidden = !lost;
+    },
+  };
+}

@@ -1,0 +1,23 @@
+{
+  "name": "ev-experience-xr",
+  "private": true,
+  "version": "0.1.0",
+  "description": "EV Experience XR — Laboratório Virtual de Veículos Elétricos (Babylon.js + WebXR)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:https": "vite --mode https",
+    "build": "vite build",
+    "preview": "vite preview",
+    "preview:https": "vite preview --mode https"
+  },
+  "dependencies": {
+    "@babylonjs/core": "9.28.0",
+    "@babylonjs/gui": "9.28.0",
+    "@babylonjs/loaders": "9.28.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-basic-ssl": "2.3.0",
+    "vite": "8.3.1"
+  }
+}
