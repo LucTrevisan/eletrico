@@ -113,6 +113,9 @@ export function createEnergyFlow(scene, { parent, items, dims, axles, chargePort
     },
     /** Número de e-Axles (1 = tração dianteira ou traseira, 2 = AWD). */
     driveUnits: P.units.length,
+    /** Base do carregador externo e porta de recarga (local do prato), para enquadrar a câmera. */
+    stationLocal: station.base.clone(),
+    portLocal: P.port.clone(),
   };
 }
 
@@ -387,6 +390,7 @@ function createChargingStation(scene, parent, port, dims, platformRadius, floorY
 
   return {
     meshes,
+    base,
     glowMeshes: [acStrip, dcStrip, marker],
     setType(t) {
       type = t;

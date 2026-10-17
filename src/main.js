@@ -372,6 +372,7 @@ async function boot() {
   /** Troca o modo exibido. Pela aba (user), prepara a demonstração: 80 km/h para frear, parado para recarregar. */
   function setEnergyTab(tab, { user = false } = {}) {
     if (tab === energy.tab && !user) return;
+    const prev = energy.tab;
     energy.tab = tab;
     if (user) {
       const snap = sim.snapshot();
@@ -386,6 +387,25 @@ async function boot() {
     }
     if (tab !== "charge" && sim.snapshot().charging) sim.stopCharging();
     applyEnergyMode();
+    if (!energy.on) return;
+    if (tab === "charge" && (user || prev !== "charge")) frameCharging();
+    else if (prev === "charge" && tab !== "charge" && !xrApi?.inXR) views.flyTo("hero");
+  }
+
+  /** Desktop: enquadra carro + carregador externo lado a lado (o prato já está alinhado em 0°). */
+  function frameCharging() {
+    if (xrApi?.inXR || !flow) return;
+    const o = turntable.getAbsolutePosition();
+    const st = flow.stationLocal;
+    const min = new Vector3(Math.min(-dims.width / 2, st.x - 0.35), 0, Math.min(-dims.length / 2, st.z - 0.35)).addInPlace(o);
+    const max = new Vector3(Math.max(dims.width / 2, st.x + 0.35), Math.max(dims.height, 1.8), Math.max(dims.length / 2, st.z + 0.35)).addInPlace(o);
+    // Câmera a ~57° da direção do carregador, do lado mais próximo da vista inicial.
+    const phi = Math.atan2(st.z, st.x);
+    const hero = views.views.hero.alpha;
+    const gap = (a) => Math.abs(Math.atan2(Math.sin(a - hero), Math.cos(a - hero)));
+    const alpha = [phi - 1, phi + 1].sort((a, b) => gap(a) - gap(b))[0];
+    hud.setActiveView(null);
+    views.frameBox(min, max, { alpha });
   }
 
   function applyEnergyMode() {
@@ -414,7 +434,9 @@ async function boot() {
       energyPanel.update(sim.snapshot());
       if (xrApi?.inXR) energyPanel.showVR(xrApi.camera);
       else energyPanel.showDesktop();
+      if (energy.tab === "charge") frameCharging();
     } else {
+      if (energy.tab === "charge" && !xrApi?.inXR) views.flyTo("hero");
       sim.releaseInputs();
       sim.stopCharging();
       flow?.setMode(null);

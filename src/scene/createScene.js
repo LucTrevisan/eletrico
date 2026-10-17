@@ -151,8 +151,26 @@ export function createViewController(scene, camera, dims, floorOffset) {
   function flyTo(name, { duration = 1400, radiusScale = 1 } = {}) {
     const view = VIEWS[name];
     if (!view) return Promise.resolve();
-    cancel();
     current = name;
+    return animateTo(view, target, { duration, radiusScale });
+  }
+
+  /**
+   * Enquadra uma caixa (coordenadas de mundo) a partir do ângulo `alpha`, ex.: carro + carregador
+   * externo no modo Recarga. Aproximação pela caixa envolvente projetada no plano da câmera.
+   */
+  function frameBox(min, max, { alpha, beta = 1.22, duration = 1400 } = {}) {
+    const sx = max.x - min.x;
+    const sz = max.z - min.z;
+    const s = Math.abs(Math.sin(alpha));
+    const c = Math.abs(Math.cos(alpha));
+    const view = { alpha, beta, fit: () => ({ h: sx * s + sz * c, v: (max.y - min.y) * 1.15, depth: (sx * c + sz * s) * 0.3 }) };
+    current = null;
+    return animateTo(view, Vector3.Center(min, max), { duration });
+  }
+
+  function animateTo(view, goal, { duration, radiusScale = 1 }) {
+    cancel();
     const from = {
       alpha: nearestAlpha(camera.alpha, view.alpha),
       beta: camera.beta,
@@ -172,9 +190,9 @@ export function createViewController(scene, camera, dims, floorOffset) {
           camera.beta = from.beta + (to.beta - from.beta) * t;
           camera.radius = from.radius + (to.radius - from.radius) * t;
           camera.target.set(
-            from.tx + (target.x - from.tx) * t,
-            from.ty + (target.y - from.ty) * t,
-            from.tz + (target.z - from.tz) * t,
+            from.tx + (goal.x - from.tx) * t,
+            from.ty + (goal.y - from.ty) * t,
+            from.tz + (goal.z - from.tz) * t,
           );
         },
         onComplete: resolve,
@@ -246,6 +264,7 @@ export function createViewController(scene, camera, dims, floorOffset) {
     views: VIEWS,
     target,
     flyTo,
+    frameBox,
     focusOn,
     jumpTo,
     cancel,
