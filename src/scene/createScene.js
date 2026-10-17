@@ -148,7 +148,7 @@ export function createViewController(scene, camera, dims, floorOffset) {
     active = null;
   }
 
-  function flyTo(name, { duration = 1400 } = {}) {
+  function flyTo(name, { duration = 1400, radiusScale = 1 } = {}) {
     const view = VIEWS[name];
     if (!view) return Promise.resolve();
     cancel();
@@ -161,7 +161,7 @@ export function createViewController(scene, camera, dims, floorOffset) {
       ty: camera.target.y,
       tz: camera.target.z,
     };
-    const to = { alpha: view.alpha, beta: view.beta, radius: fitRadius(view) };
+    const to = { alpha: view.alpha, beta: view.beta, radius: Math.min(camera.upperRadiusLimit, fitRadius(view) * radiusScale) };
     camera.alpha = from.alpha;
     return new Promise((resolve) => {
       active = tween(scene, {
@@ -221,6 +221,27 @@ export function createViewController(scene, camera, dims, floorOffset) {
     canvas.addEventListener(type, cancel, { passive: true });
   }
 
+  /**
+   * Painéis abertos "ocupam" bordas da tela; o carro é deslocado para o centro da área livre
+   * (targetScreenOffset muda só a matriz de vista — sem custo extra de renderização).
+   * insets em px CSS: { left, right, bottom }.
+   */
+  const insets = { left: 0, right: 0, bottom: 0 };
+  const offsetGoal = { x: 0, y: 0 };
+  scene.onBeforeRenderObservable.add(() => {
+    if (scene.activeCamera !== camera) return;
+    const h = canvas.clientHeight || 1;
+    const worldPerPx = (2 * camera.radius * Math.tan(camera.fov / 2)) / h;
+    offsetGoal.x = ((insets.left - insets.right) / 2) * worldPerPx;
+    offsetGoal.y = (insets.bottom / 2) * worldPerPx;
+    const o = camera.targetScreenOffset;
+    const k = Math.min(1, scene.getEngine().getDeltaTime() / 180);
+    if (Math.abs(o.x - offsetGoal.x) > 1e-4 || Math.abs(o.y - offsetGoal.y) > 1e-4) {
+      o.x += (offsetGoal.x - o.x) * k;
+      o.y += (offsetGoal.y - o.y) * k;
+    }
+  });
+
   return {
     views: VIEWS,
     target,
@@ -228,6 +249,11 @@ export function createViewController(scene, camera, dims, floorOffset) {
     focusOn,
     jumpTo,
     cancel,
+    setScreenInsets(next) {
+      insets.left = next.left ?? 0;
+      insets.right = next.right ?? 0;
+      insets.bottom = next.bottom ?? 0;
+    },
     fitRadius: (name) => fitRadius(VIEWS[name]),
     get current() {
       return current;

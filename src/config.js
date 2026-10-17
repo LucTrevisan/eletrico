@@ -1,9 +1,8 @@
 /**
  * Configuração central do EV Experience XR.
  *
- * Tudo que depende do modelo 3D fica aqui, para que a troca do modelo provisório
- * pelo GLB definitivo do BYD Song Pro exija apenas copiar o arquivo e, se preciso,
- * ajustar a orientação (`rotationDeg`).
+ * Tudo que depende do modelo 3D fica aqui: arquivo, orientação, layout dos componentes
+ * elétricos e valores da simulação. Trocar de veículo = ajustar VEHICLE_MODELS e SIMULATION.
  */
 
 export const APP = {
@@ -32,35 +31,43 @@ export const PALETTE = {
 };
 
 /**
- * Modelos candidatos, em ordem de prioridade. O primeiro arquivo encontrado em
- * `public/models/` é carregado. Para usar o modelo definitivo basta salvá-lo como
- * `public/models/byd-song-pro.glb` — o provisório passa a ser ignorado.
+ * Modelos candidatos, em ordem de prioridade (o primeiro arquivo encontrado em
+ * `public/models/` é carregado). Otimize GLBs novos com `npm run otimizar-modelo`.
  *
- * `rotationDeg` corrige a orientação para o padrão da cena: frente do carro
- * apontando para +Z, teto para +Y. Ajuste ao vivo pelo console com
- * `evxr.girarModelo(x, y, z)` e depois grave aqui o valor que funcionou.
- *
- * `drivetrain` ("front" | "rear") indica o eixo do motor. Só é usado para posicionar
- * representações ilustrativas quando o GLB não traz os componentes internos.
+ *  rotationDeg  correção de orientação (frente do carro → +Z, teto → +Y);
+ *               `autoFront` acerta sozinho a frente pela posição dos faróis/lanternas.
+ *  drivetrain   eixo do(s) motor(es): "front" | "rear" | "awd". Posiciona as peças
+ *               ilustrativas quando o GLB não traz os componentes internos.
+ *  chargePort   onde fica a porta de recarga: { side: "left"|"right", end: "front"|"rear" }.
+ *  extraPatterns regras extras de identificação de peças só para este arquivo.
+ *  notes        linha "No Toyota bZ4X" nos painéis educativos (valores aproximados).
  */
 export const VEHICLE_MODELS = [
   {
-    id: "byd-song-pro",
-    url: "models/byd-song-pro.glb",
-    label: "BYD Song Pro",
+    id: "toyota-bz4x",
+    url: "models/toyota-bz4x.glb",
+    label: "Toyota bZ4X",
     provisional: false,
+    credit: "Modelo 3D: “Toyota bZ4X” por KOElkast1007 (Sketchfab, licença Sketchfab Standard)",
     rotationDeg: { x: 0, y: 0, z: 0 },
-    drivetrain: "front",
-  },
-  {
-    id: "provisorio",
-    url: "models/provisorio.glb",
-    label: "BYD Song Pro",
-    provisional: true,
-    // No GLB provisório a frente está em +X (glTF); após a conversão para o
-    // sistema de mão esquerda do Babylon ela fica em -X. 90° leva -X para +Z.
-    rotationDeg: { x: 0, y: 90, z: 0 },
-    drivetrain: "rear",
+    autoFront: true,
+    // O modelo tem emblema "AWD": um e-Axle (motor + redutor + inversor) em cada eixo.
+    drivetrain: "awd",
+    chargePort: { side: "left", end: "front" }, // para-lama dianteiro esquerdo
+    extraPatterns: {
+      portas: [/^boot/i], // tampa traseira (5ª porta)
+      interior: [/^misc_[ab]/i, /steering/i],
+      freios: [/^hub_/i],
+    },
+    notes: {
+      bateria: "Íons de lítio sob o assoalho, refrigerada a líquido; ~71,4 kWh brutos na versão de lançamento (varia por versão e ano).",
+      motor: "Versão AWD (a do modelo): dois motores, um por eixo, de ~80 kW cada (~160 kW combinados no lançamento). A FWD tem só o dianteiro.",
+      inversor: "Um por e-Axle, integrado ao motor e ao redutor — na dianteira e na traseira.",
+      redutor: "Um por e-Axle, junto com o motor e o inversor, em cada eixo.",
+      recarga: "Porta no para-lama dianteiro esquerdo. CA de 6,6 kW (11 kW em versões posteriores) e CC rápida de até ~150 kW.",
+      refrigeracao: "Circuito de líquido para bateria e trem de força, com trocador de calor na dianteira.",
+      portas: "Quatro portas e tampa traseira: clique em uma delas para abrir ou fechar.",
+    },
   },
 ];
 
@@ -70,7 +77,7 @@ export const VEHICLE = {
    * vier em outra unidade (mm, cm) — não são exibidas ao usuário.
    * Conferir com a ficha técnica oficial do veículo.
    */
-  referenceLength: 4.738,
+  referenceLength: 4.69, // Toyota bZ4X: 4,69 × 1,86 × 1,65 m, entre-eixos 2,85 m
   /** Faixa plausível de comprimento (m). Fora dela, o modelo é reescalado para `referenceLength`. */
   plausibleLength: [3.0, 6.5],
 
@@ -84,7 +91,7 @@ export const VEHICLE = {
    */
   mergeStrategy: "assembly",
   /** Malhas que nunca são unidas (precisam de pivô próprio, ex.: portas que abrem). */
-  keepSeparate: [/porta_painel|porta_contorno|porta_macaneta|door/i],
+  keepSeparate: [/porta_painel|porta_contorno|porta_macaneta|door|^boot/i],
 };
 
 export const SHOWROOM = {
@@ -107,16 +114,17 @@ export const XR = {
 };
 
 /**
- * Simulação educativa (Etapa 3). VALORES DEMONSTRATIVOS, plausíveis para um SUV
- * elétrico médio — não são especificações nem medições do veículo exibido.
+ * Simulação educativa (Etapa 3). VALORES APROXIMADOS inspirados no Toyota bZ4X AWD de
+ * lançamento (2 × 80 kW, bateria ~71,4 kWh, ~2.000 kg, CA 6,6 kW, CC até ~150 kW) — a
+ * simulação é demonstrativa e não reproduz medições do veículo. Confira a ficha da versão/ano.
  */
 export const SIMULATION = {
-  massKg: 1900,
-  batteryKwh: 70,
+  massKg: 2000,
+  batteryKwh: 71.4,
   initialSoc: 72,
-  maxPowerKw: 150, // potência máxima de tração retirada da bateria
+  maxPowerKw: 160, // potência máxima de tração retirada da bateria (dois motores)
   maxRegenKw: 60, // potência máxima de regeneração devolvida à bateria
-  maxAccel: 3.6, // m/s² (limite de aderência/torque em baixa velocidade)
+  maxAccel: 4.1, // m/s² (tração integral: mais aderência na arrancada)
   brakeDecel: 3.0, // m/s² ao segurar "Frear"
   maxSpeedKmh: 160,
   driveEfficiency: 0.9, // bateria → rodas
@@ -127,13 +135,13 @@ export const SIMULATION = {
   regenMinKmh: 8, // abaixo disso a regeneração some e o freio a disco completa a parada
   regenSocLimit: 95, // acima disso a bateria aceita menos regeneração
   lowSoc: 8, // abaixo disso a potência de tração é reduzida
-  acKw: 7.4, // recarga CA (carregador de bordo)
-  dcKw: 100, // recarga rápida CC (pico, cai perto da carga completa)
+  acKw: 6.6, // recarga CA (carregador de bordo)
+  dcKw: 150, // recarga rápida CC (pico, cai perto da carga completa)
   chargeTimeScale: 60, // na recarga, 1 s de tela = 1 min simulado
 };
 
 /**
- * Parâmetros de URL úteis para teste: ?q=low|medium|high, ?nointro, ?debug, ?model=models/x.glb,
+ * Parâmetros de URL úteis para teste: ?q=low|medium|high, ?nointro, ?debug, ?model=models/x.glb&rot=0,90,0,
  * ?ilustrativo (esconde os componentes internos reais para testar as representações ilustrativas).
  */
 export const URL_PARAMS = new URLSearchParams(window.location.search);

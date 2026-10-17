@@ -55,8 +55,9 @@ export function createSelection(scene, { meshesByComponent, states, onSelect, on
   scene.onPointerObservable.add((pi) => {
     const type = pi.event?.pointerType;
     if (pi.type === PointerEventTypes.POINTERTAP) {
-      const id = componentOf(pi.pickInfo?.pickedMesh);
-      if (id) onSelect?.(id);
+      const mesh = pi.pickInfo?.pickedMesh;
+      const id = componentOf(mesh);
+      if (id) onSelect?.(id, mesh);
     } else if (pi.type === PointerEventTypes.POINTERDOUBLETAP) {
       const id = componentOf(pi.pickInfo?.pickedMesh);
       if (id) onDoubleSelect?.(id);
@@ -66,7 +67,7 @@ export function createSelection(scene, { meshesByComponent, states, onSelect, on
         const id = pi.event.buttons ? null : componentOf(pi.pickInfo?.pickedMesh);
         hoverByPointer.set("mouse", id);
         refreshHover();
-        onHover?.(id, pi.event.clientX, pi.event.clientY);
+        onHover?.(id, pi.event.clientX, pi.event.clientY, pi.pickInfo?.pickedMesh);
       } else if (type === "xr") {
         const pick = pi.pickInfo;
         const id = componentOf(pick?.pickedMesh);

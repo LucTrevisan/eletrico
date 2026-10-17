@@ -22,15 +22,18 @@ export const COMPONENT_CATALOG = [
   { id: "motor", label: "Motor elétrico", patterns: [/motor/i] },
   { id: "redutor", label: "Redutor / transmissão", patterns: [/redutor|reducer|transmiss|gearbox|cambio|câmbio/i] },
   { id: "refrigeracao", label: "Sistema de refrigeração", patterns: [/refrigera|radiador|radiator|cooling|arrefec/i] },
-  { id: "freios", label: "Freios (discos e pinças)", patterns: [/disco|pinca|pinça|brake|caliper|freio/i] },
-  { id: "rodas", label: "Rodas e pneus", patterns: [/roda|wheel|pneu|tire|tyre/i] },
+  { id: "freios", label: "Freios (discos e pinças)", patterns: [/disco|disc|pinca|pinça|brake_?disc|caliper|freio/i] },
+  // Interior antes das rodas: "steeringwheel" (volante) não é roda.
+  { id: "interior", label: "Interior", patterns: [/interior|assento|encosto|apoio_?cabeca|volante|seat|steering|console|dashboard|dash_|leather|tela|display/i] },
+  { id: "rodas", label: "Rodas e pneus", patterns: [/roda|wheel|pneu|tire|tyre|velg/i] },
   { id: "chassi", label: "Chassi", patterns: [/chassi|chassis|longarina|subframe/i] },
-  { id: "interior", label: "Interior", patterns: [/interior|assento|encosto|apoio_?cabeca|volante|seat|steering|console|dashboard|tela|display/i] },
-  { id: "vidros", label: "Vidros", patterns: [/vidro|glass|window|windshield|para-?brisa/i] },
+  { id: "vidros", label: "Vidros", patterns: [/vidro|glass|window|windshield|windscreen|para-?brisa/i] },
   {
     id: "carroceria",
     label: "Carroceria",
-    patterns: [/carroceria|body|retrovisor|farol|lanterna|headlight|taillight|lamp|para-?choque|bumper|capo|hood|teto|roof/i],
+    patterns: [
+      /carroceria|body|retrovisor|farol|lanterna|headlight|taillight|brakelight|reversinglight|indicator|lamp|para-?choque|bumper|capo|hood|teto|roof/i,
+    ],
   },
 ];
 
@@ -43,11 +46,15 @@ export const INTERNAL_COMPONENTS = ["bateria", "motor", "inversor", "redutor", "
 const NON_SELECTABLE = new Set(["vidros"]);
 export const isSelectableComponent = (id) => !!id && !NON_SELECTABLE.has(id);
 
-export function classifyMesh(mesh, stopAt) {
+/**
+ * Componente de uma malha pelo nome dela e dos ancestrais (do mais próximo ao mais distante).
+ * `extra` ({ id: [regex] }) são regras do modelo carregado (config: extraPatterns), testadas primeiro.
+ */
+export function classifyMesh(mesh, stopAt, extra = {}) {
+  const extraRules = Object.entries(extra).map(([id, patterns]) => ({ id, patterns }));
   for (let node = mesh; node && node !== stopAt; node = node.parent) {
-    for (const c of COMPONENT_CATALOG) {
-      if (c.patterns.some((p) => p.test(node.name))) return c.id;
-    }
+    for (const c of extraRules) if (c.patterns.some((p) => p.test(node.name))) return c.id;
+    for (const c of COMPONENT_CATALOG) if (c.patterns.some((p) => p.test(node.name))) return c.id;
   }
   return "outros";
 }
@@ -65,9 +72,10 @@ export function organizeVehicle(vehicle, { mergeStrategy = "assembly", keepSepar
   const { container, gltfRoot } = vehicle;
   const scene = container.getScene();
   const level = findAssemblyLevel(gltfRoot);
+  const extra = vehicle.model.extraPatterns ?? {};
 
   const entries = vehicle.meshes.map((mesh) => {
-    const component = classifyMesh(mesh, gltfRoot);
+    const component = classifyMesh(mesh, gltfRoot, extra);
     const assembly = mergeStrategy === "component" ? component : assemblyOf(mesh, level).name;
     return { mesh, component, assembly, name: mesh.name };
   });

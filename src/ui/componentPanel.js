@@ -57,6 +57,8 @@ function createDesktopPanel(onClose, onAction) {
     importancia: $("cpImportancia"),
     extraLabel: $("cpExtraLabel"),
     extra: $("cpExtra"),
+    modelLabel: $("cpModelLabel"),
+    model: $("cpModel"),
     actions: $("cpActions"),
     close: $("cpClose"),
   };
@@ -90,6 +92,12 @@ function createDesktopPanel(onClose, onAction) {
       if (c.extra) {
         el.extraLabel.textContent = c.extra.label;
         el.extra.textContent = c.extra.text;
+      }
+      // Nota específica do veículo exibido (config: notes).
+      el.modelLabel.hidden = el.model.hidden = !c.modelNote;
+      if (c.modelNote) {
+        el.modelLabel.textContent = c.modelNote.label;
+        el.model.textContent = c.modelNote.text;
       }
       setActions(actions);
       el.root.hidden = false;

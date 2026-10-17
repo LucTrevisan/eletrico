@@ -1,98 +1,136 @@
 import { Animation, Axis, CubicEase, EasingFunction, Quaternion, TransformNode, Vector3 } from "../babylon.js";
 
-const OPEN_DEG = 62;
+const SIDE_DEG = 62;
+const TAILGATE_DEG = 72;
 const FPS = 60;
+const TAILGATE = /boot|tailgate|trunk|hatch|porta[-_ ]?malas|tampa/i;
 
 /**
- * PORTAS que abrem e fecham (quando o modelo tem portas como peças separadas).
+ * PORTAS e TAMPA TRASEIRA que abrem e fecham (clique, gatilho do controle ou pinça).
  *
- * As malhas do componente "portas" são agrupadas por porta (lado esquerdo/direito ×
- * dianteira/traseira, pela posição). Cada porta ganha uma "dobradiça" (TransformNode)
- * na borda dianteira externa, alinhada ao carro, criada dentro do conjunto original —
- * assim o exploded view continua movendo as portas junto com o conjunto.
- * A abertura usa o sistema de animação do Babylon (Animation + CubicEase).
+ * Agrupamento: se o modelo separa cada porta em um conjunto próprio (caso do bZ4X), usa
+ * esses conjuntos; senão agrupa as peças pela posição (lado × dianteira/traseira).
+ * Cada porta ganha uma "dobradiça" (TransformNode) alinhada ao carro, criada dentro do
+ * conjunto original (o exploded view continua movendo a porta junto):
+ *   portas laterais  → borda dianteira externa, giro vertical (para fora);
+ *   tampa traseira   → borda superior, giro horizontal (para cima).
+ * Animação do Babylon (Animation + CubicEase); só a dobradiça anima — custo mínimo.
  */
 export function createDoors(scene, { items, parent }) {
   const meshes = items.portas?.meshes ?? [];
   if (!meshes.length) return null;
 
   const toLocal = parent.getWorldMatrix().clone().invert();
-  const centerOf = (ms) => {
+  const boxOf = (ms) => {
     const min = new Vector3(Infinity, Infinity, Infinity);
     const max = new Vector3(-Infinity, -Infinity, -Infinity);
     for (const m of ms) {
       m.computeWorldMatrix(true);
       const b = m.getBoundingInfo().boundingBox;
-      min.minimizeInPlace(Vector3.TransformCoordinates(b.minimumWorld, toLocal));
-      max.maximizeInPlace(Vector3.TransformCoordinates(b.maximumWorld, toLocal));
+      for (const v of b.vectorsWorld) {
+        const l = Vector3.TransformCoordinates(v, toLocal);
+        min.minimizeInPlace(l);
+        max.maximizeInPlace(l);
+      }
     }
     return { min, max, center: Vector3.Center(min, max) };
   };
 
-  const all = centerOf(meshes);
-  const spanZ = all.max.z - all.min.z;
-  const groups = new Map();
+  const all = boxOf(meshes);
+  const byAssembly = new Map();
   for (const m of meshes) {
-    const c = centerOf([m]).center;
-    const side = c.x < all.center.x ? "esq" : "dir";
-    // Portas dianteiras e traseiras só se o conjunto for longo (carro de 4 portas).
-    const row = spanZ > 1.6 ? (c.z > all.center.z ? "diant" : "tras") : "unica";
-    const key = `${side}-${row}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(m);
+    const key = m.metadata?.evxr?.assembly ?? "portas";
+    if (!byAssembly.has(key)) byAssembly.set(key, []);
+    byAssembly.get(key).push(m);
+  }
+  let groups;
+  if (byAssembly.size >= 2) {
+    groups = [...byAssembly.entries()];
+  } else {
+    // Todas as portas num conjunto só: separa por lado e por fileira.
+    const spanZ = all.max.z - all.min.z;
+    const map = new Map();
+    for (const m of meshes) {
+      const c = boxOf([m]).center;
+      const key = `${c.x < all.center.x ? "esq" : "dir"}-${spanZ > 1.6 ? (c.z > all.center.z ? "diant" : "tras") : "unica"}`;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(m);
+    }
+    groups = [...map.entries()];
   }
 
+  const ease = new CubicEase();
+  ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
   const doors = [];
   for (const [key, ms] of groups) {
-    const box = centerOf(ms);
-    const left = key.startsWith("esq");
+    const box = boxOf(ms);
+    const tailgate = TAILGATE.test(key) || TAILGATE.test(ms[0].name);
+    const left = box.center.x < 0;
     const hinge = new TransformNode(`door-hinge:${key}`, scene);
     hinge.parent = parent;
-    hinge.position.set(left ? box.min.x : box.max.x, box.center.y, box.max.z); // borda dianteira externa
+    hinge.position.copyFrom(
+      tailgate
+        ? new Vector3(box.center.x, box.max.y, box.max.z) // borda superior (lado do teto)
+        : new Vector3(left ? box.min.x : box.max.x, box.center.y, box.max.z), // borda dianteira externa
+    );
     hinge.rotationQuaternion = Quaternion.Identity();
     hinge.computeWorldMatrix(true);
     const assemblyNode = ms[0].parent;
     if (assemblyNode) hinge.setParent(assemblyNode);
     for (const m of ms) m.setParent(hinge);
     const closed = hinge.rotationQuaternion.clone();
-    // Ângulo positivo em torno do Y do carro leva a borda traseira para fora no lado esquerdo.
-    const angle = ((left ? 1 : -1) * OPEN_DEG * Math.PI) / 180;
-    const open = closed.multiply(Quaternion.RotationAxis(Axis.Y, angle));
-    doors.push({ key, hinge, closed, open, center: box.center, left });
+    // Lateral: ângulo + em Y leva a borda traseira para fora no lado esquerdo (− no direito).
+    // Tampa: ângulo + em X levanta a borda inferior para cima e para trás.
+    const open = tailgate
+      ? closed.multiply(Quaternion.RotationAxis(Axis.X, (TAILGATE_DEG * Math.PI) / 180))
+      : closed.multiply(Quaternion.RotationAxis(Axis.Y, ((left ? 1 : -1) * SIDE_DEG * Math.PI) / 180));
+    doors.push({ key, hinge, closed, open, isOpen: false, tailgate });
   }
 
-  let isOpen = false;
-  const ease = new CubicEase();
-  ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
-
-  function animate(toOpen, { stagger = true } = {}) {
-    isOpen = toOpen;
-    doors.forEach((d, i) => {
-      scene.stopAnimation(d.hinge, "door");
-      const anim = new Animation("door", "rotationQuaternion", FPS, Animation.ANIMATIONTYPE_QUATERNION, Animation.ANIMATIONLOOPMODE_CONSTANT);
-      const delay = stagger ? i * 6 : 0;
-      const from = d.hinge.rotationQuaternion.clone();
-      const to = toOpen ? d.open : d.closed;
-      anim.setKeys([
-        { frame: 0, value: from },
-        { frame: delay, value: from },
-        { frame: delay + 48, value: to },
-      ]);
-      anim.setEasingFunction(ease);
-      scene.beginDirectAnimation(d.hinge, [anim], 0, delay + 48, false);
-    });
+  function animate(door, toOpen, delay = 0) {
+    door.isOpen = toOpen;
+    scene.stopAnimation(door.hinge, "door");
+    const anim = new Animation("door", "rotationQuaternion", FPS, Animation.ANIMATIONTYPE_QUATERNION, Animation.ANIMATIONLOOPMODE_CONSTANT);
+    const from = door.hinge.rotationQuaternion.clone();
+    const duration = door.tailgate ? 56 : 46;
+    anim.setKeys([
+      { frame: 0, value: from },
+      { frame: delay, value: from },
+      { frame: delay + duration, value: toOpen ? door.open : door.closed },
+    ]);
+    anim.setEasingFunction(ease);
+    scene.beginDirectAnimation(door.hinge, [anim], 0, delay + duration, false);
   }
+
+  /** Porta à qual uma malha pertence (sobe pela hierarquia até a dobradiça). */
+  const doorOf = (mesh) => {
+    for (let n = mesh; n; n = n.parent) {
+      const d = doors.find((x) => x.hinge === n);
+      if (d) return d;
+    }
+    return null;
+  };
 
   return {
     count: doors.length,
-    get isOpen() {
-      return isOpen;
+    get anyOpen() {
+      return doors.some((d) => d.isOpen);
     },
-    toggle() {
-      animate(!isOpen);
-      return isOpen;
+    /** Abre/fecha só a porta clicada. Retorna true se ela ficou aberta. */
+    toggleFor(mesh) {
+      const d = doorOf(mesh);
+      if (!d) return null;
+      animate(d, !d.isOpen);
+      return d.isOpen;
     },
-    open: () => animate(true),
-    close: (opts) => animate(false, opts),
+    /** Abre/fecha todas (ação do painel e tecla P). */
+    toggleAll() {
+      const open = !doors.some((d) => d.isOpen);
+      doors.forEach((d, i) => animate(d, open, i * 6));
+      return open;
+    },
+    closeAll({ stagger = false } = {}) {
+      doors.forEach((d, i) => d.isOpen && animate(d, false, stagger ? i * 6 : 0));
+    },
   };
 }

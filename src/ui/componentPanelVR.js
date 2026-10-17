@@ -7,7 +7,7 @@ const FONT = "'Segoe UI', Roboto, Arial, sans-serif";
 /** Painel educativo holográfico (VR). Carregado sob demanda pelo componentPanel.js. */
 export function createComponentPanelVR(scene, { onClose, onAction, illustrativeNote }) {
   const width = 0.7;
-  const height = 0.6;
+  const height = 0.74; // espaço para a nota do veículo e os botões de ação
   const plane = MeshBuilder.CreatePlane("vr-component-panel", { width, height }, scene);
   plane.setEnabled(false);
   const res = 1024;
@@ -43,7 +43,7 @@ export function createComponentPanelVR(scene, { onClose, onAction, illustrativeN
   const title = text("cp-title", 50, "700");
   title.paddingBottom = "6px";
   const note = text("cp-note", 24, "600", PALETTE.orange);
-  const sections = ["Função", "Como funciona", "Importância", "extra"].map((label, i) => {
+  const sections = ["Função", "Como funciona", "Importância", "extra", "modelo"].map((label, i) => {
     const head = text(`cp-h${i}`, 26, "700");
     head.paddingTop = "16px";
     head.text = label;
@@ -107,13 +107,14 @@ export function createComponentPanelVR(scene, { onClose, onAction, illustrativeN
       title.text = c.title;
       note.text = illustrative ? illustrativeNote : "";
       note.isVisible = illustrative;
-      const values = [c.funcao, c.comoFunciona, c.importancia, c.extra?.text];
+      const values = [c.funcao, c.comoFunciona, c.importancia, c.extra?.text, c.modelNote?.text];
       sections.forEach((s, i) => {
         s.head.color = c.color;
         s.body.text = values[i] ?? "";
         s.head.isVisible = s.body.isVisible = !!values[i];
       });
       sections[3].head.text = c.extra?.label ?? "";
+      sections[4].head.text = c.modelNote?.label ?? "";
 
       // Entre o usuário e o componente, deslocado para a direita da linha de visão.
       const eye = camera.globalPosition.clone();

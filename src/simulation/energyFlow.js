@@ -20,13 +20,14 @@ import { PALETTE } from "../config.js";
  *   CC (corrente contínua) azul · CA (corrente alternada) ciano · mecânica laranja.
  *
  * Modos:
- *   accel      Bateria → Inversor → Motor → Redutor → Rodas
+ *   accel      Bateria → Inversor → Motor → Redutor → Rodas (em cada e-Axle; dois no AWD)
  *   regen      Rodas → Redutor → Motor (gerador) → Inversor → Bateria
  *   charge-ac  Rede (CA) → Porta → Carregador de bordo (CA→CC) → Bateria
  *   charge-dc  Carregador rápido (CC) → Porta → Proteção e controle (BMS) → Bateria
  *
- * Tudo fica preso ao prato giratório (coordenadas locais: frente em +Z, piso do carro em y = 0).
- * As rotas aparecem por cima do carro (grupo de renderização 1), como num diagrama.
+ * Desempenho: materiais compartilhados por (modo, tipo de energia); partículas em thin
+ * instances (1 draw call por trecho) com posições pré-amostradas — nenhuma alocação por quadro.
+ * Tudo preso ao prato giratório (frente em +Z, lado esquerdo em −X, piso do carro em y = 0).
  */
 export const ENERGY_KINDS = {
   cc: { color: PALETTE.blue, label: "Elétrica CC" },
@@ -37,16 +38,20 @@ export const ENERGY_KINDS = {
 const SAMPLES = 96;
 const FADE_MS = 450;
 
-export function createEnergyFlow(scene, { parent, items, dims, platformRadius, floorY, spawnLocal, addGlow }) {
-  const P = resolvePoints(items, dims, parent);
+export function createEnergyFlow(scene, { parent, items, dims, axles, chargePort, platformRadius, floorY, spawnLocal, addGlow }) {
+  const P = resolvePoints(items, dims, axles, chargePort, parent);
   const station = createChargingStation(scene, parent, P.port, dims, platformRadius, floorY, spawnLocal);
   addGlow?.(station.glowMeshes);
 
   const routes = buildRoutes(P, station);
   const modes = {};
   for (const [mode, defs] of Object.entries(routes)) {
-    modes[mode] = defs.map((d, i) => makeStream(scene, parent, `${mode}-${i}`, d.points, d.kind));
-    for (const s of modes[mode]) addGlow?.([s.dots]);
+    const mats = {};
+    modes[mode] = {
+      mats,
+      streams: defs.map((d, i) => makeStream(scene, parent, `${mode}-${i}`, d.points, d.kind, (mats[d.kind] ??= makeMaterials(scene, mode, d.kind)))),
+    };
+    addGlow?.(modes[mode].streams.map((s) => s.dots));
   }
 
   const wheels = prepareWheels(items, parent);
@@ -57,33 +62,32 @@ export function createEnergyFlow(scene, { parent, items, dims, platformRadius, f
   const fades = Object.fromEntries(Object.keys(modes).map((m) => [m, 0]));
   let stationFade = 0;
 
-  function setStreamVisibility(stream, k, flowing) {
-    const on = k > 0.001;
-    stream.tube.setEnabled(on);
-    stream.dots.setEnabled(on && flowing);
-    stream.tubeMat.alpha = 0.32 * k;
-    stream.dotMat.alpha = k;
-  }
-
   scene.onBeforeRenderObservable.add(() => {
     const dt = Math.min(scene.getEngine().getDeltaTime() / 1000, 0.1);
     const step = (dt * 1000) / FADE_MS;
 
-    for (const [m, streams] of Object.entries(modes)) {
+    for (const [m, { mats, streams }] of Object.entries(modes)) {
       const target = m === mode ? 1 : 0;
       const f = fades[m];
-      if (f === target && target === 0) continue;
-      fades[m] = target > f ? Math.min(1, f + step) : Math.max(0, f - step);
+      if (f === 0 && target === 0) continue;
+      const k = (fades[m] = target > f ? Math.min(1, f + step) : Math.max(0, f - step));
       const flowing = intensity > 0.001 && m === mode;
+      for (const mat of Object.values(mats)) {
+        mat.tube.alpha = 0.32 * k;
+        mat.dots.alpha = k;
+      }
       for (const s of streams) {
-        setStreamVisibility(s, fades[m], flowing);
+        s.tube.setEnabled(k > 0.001);
+        s.dots.setEnabled(k > 0.001 && flowing);
         if (flowing) animateStream(s, dt, intensity);
       }
     }
 
     const wantStation = mode === "charge-ac" || mode === "charge-dc";
-    stationFade = wantStation ? Math.min(1, stationFade + step) : Math.max(0, stationFade - step);
-    station.setVisibility(stationFade);
+    if (wantStation || stationFade > 0) {
+      stationFade = wantStation ? Math.min(1, stationFade + step) : Math.max(0, stationFade - step);
+      station.setVisibility(stationFade);
+    }
 
     if (wheelKmh > 0.05) {
       // Velocidade angular "visual" (proporcional, mais lenta que a real para não virar estroboscópio).
@@ -107,19 +111,46 @@ export function createEnergyFlow(scene, { parent, items, dims, platformRadius, f
     setWheelSpeed(kmh) {
       wheelKmh = kmh;
     },
-    stationMeshes: station.meshes,
+    /** Número de e-Axles (1 = tração dianteira ou traseira, 2 = AWD). */
+    driveUnits: P.units.length,
   };
 }
 
 // ----------------------------------------------------------------------------- pontos
 
-function resolvePoints(items, dims, parent) {
-  const c = (id) => items[id]?.center?.clone();
+function resolvePoints(items, dims, axles, chargePort, parent) {
   const bat = items.bateria;
-  const inv = c("inversor");
-  const mot = c("motor");
-  const red = c("redutor") ?? mot?.add(new Vector3(0.25, 0, 0));
-  const ecu = c("ecu") ?? bat?.center.add(new Vector3(-dims.width * 0.25, 0.1, bat.size.z * -0.4));
+  const c = (id) => items[id]?.center?.clone();
+  const ecu = c("ecu") ?? bat.center.add(new Vector3(-dims.width * 0.25, 0.1, bat.size.z * -0.4));
+
+  // Rodas: centros por conjunto.
+  const wheelCenters = groupBy(items.rodas?.meshes ?? [], (m) => m.metadata.evxr.assembly).map((ms) => localCenter(ms, parent));
+  const wheelsNear = (z) => [...wheelCenters].sort((a, b) => Math.abs(a.z - z) - Math.abs(b.z - z)).slice(0, 2);
+
+  // e-Axles: um por parte do motor (AWD ilustrativo tem duas) ou um único conjunto real.
+  const partFor = (id, axle) => items[id]?.parts?.find((p) => p.axle === axle)?.center?.clone();
+  const motorParts = items.motor?.parts?.filter((p) => p.axle) ?? [];
+  const units = motorParts.length
+    ? motorParts.map((p) => {
+        const mot = p.center.clone();
+        return {
+          mot,
+          inv: partFor("inversor", p.axle) ?? mot.add(new Vector3(0, 0.3, 0)),
+          red: partFor("redutor", p.axle) ?? mot.add(new Vector3(0.25, 0, 0)),
+          wheels: wheelsNear(mot.z),
+        };
+      })
+    : [
+        (() => {
+          const mot = c("motor") ?? new Vector3(0, axles?.wheelRadius ?? 0.35, axles?.front ?? dims.length * 0.3);
+          return {
+            mot,
+            inv: c("inversor") ?? mot.add(new Vector3(0, 0.3, 0)),
+            red: c("redutor") ?? mot.add(new Vector3(0.25, 0, 0)),
+            wheels: wheelsNear(mot.z),
+          };
+        })(),
+      ];
 
   // Recarga: separa a porta (tomada) do carregador de bordo pelos nomes das peças originais.
   let port = null;
@@ -133,19 +164,20 @@ function resolvePoints(items, dims, parent) {
     if (obcMeshes.length) obc = localCenter(obcMeshes, parent);
   }
   obc ??= c("recarga") ?? bat.center.add(new Vector3(0.2, 0.2, bat.size.z * 0.4));
-  // Sem porta modelada: posição típica (lateral traseira esquerda), apenas ilustrativa.
-  port ??= new Vector3(-dims.width * 0.46, dims.height * 0.55, -dims.length * 0.36);
+  // Sem porta modelada: posição informada no config (ex.: para-lama dianteiro esquerdo).
+  if (!port) {
+    const side = chargePort?.side === "right" ? 1 : -1;
+    const atFront = (chargePort?.end ?? "front") === "front";
+    const axleZ = atFront ? (axles?.front ?? dims.length * 0.3) : (axles?.rear ?? -dims.length * 0.3);
+    const wheelR = axles?.wheelRadius ?? 0.36;
+    port = new Vector3(side * dims.width * 0.43, wheelR * 2 + 0.1, axleZ + (atFront ? -0.42 : 0.42));
+  }
 
-  // Rodas: centros por conjunto; o eixo motriz é o mais próximo do motor.
-  const wheelCenters = groupBy(items.rodas?.meshes ?? [], (m) => m.metadata.evxr.assembly).map((ms) => localCenter(ms, parent));
-  const motorZ = mot?.z ?? 0;
-  const driven = [...wheelCenters].sort((a, b) => Math.abs(a.z - motorZ) - Math.abs(b.z - motorZ)).slice(0, 2);
-
-  return { bat, inv, mot, red, ecu, port, obc, driven };
+  return { bat, ecu, units, port, obc };
 }
 
 function buildRoutes(P, station) {
-  const { bat, inv, mot, red, ecu, port, obc, driven } = P;
+  const { bat, ecu, units, port, obc } = P;
   const lift = (v, dy) => v.add(new Vector3(0, dy, 0));
   const mid = (a, b, dy = 0) => lift(Vector3.Lerp(a, b, 0.5), dy);
   const batTop = (towards) =>
@@ -157,23 +189,26 @@ function buildRoutes(P, station) {
   const batCore = new Vector3(bat.center.x, bat.max.y + 0.03, bat.center.z);
   const reverse = (pts) => [...pts].reverse();
 
-  const ccOut = [batCore, batTop(inv), mid(batTop(inv), inv, 0.12), inv];
-  const caMotor = [inv, mid(inv, mot, 0.07), mot];
-  const mecRed = [mot, mid(mot, red, 0.03), red];
-  const toWheel = (w) => [red, new Vector3(w.x * 0.55, Vector3.Lerp(red, w, 0.5).y, Vector3.Lerp(red, w, 0.5).z), w];
-
-  const accel = [
-    { kind: "cc", points: ccOut },
-    { kind: "ca", points: caMotor },
-    { kind: "mec", points: mecRed },
-    ...driven.map((w) => ({ kind: "mec", points: toWheel(w) })),
-  ];
-  const regen = [
-    ...driven.map((w) => ({ kind: "mec", points: reverse(toWheel(w)) })),
-    { kind: "mec", points: reverse(mecRed) },
-    { kind: "ca", points: reverse(caMotor) },
-    { kind: "cc", points: reverse(ccOut) },
-  ];
+  const accel = [];
+  const regen = [];
+  for (const { inv, mot, red, wheels } of units) {
+    const ccOut = [batCore, batTop(inv), mid(batTop(inv), inv, 0.12), inv];
+    const caMotor = [inv, mid(inv, mot, 0.07), mot];
+    const mecRed = [mot, mid(mot, red, 0.03), red];
+    const toWheel = (w) => [red, new Vector3(w.x * 0.55, Vector3.Lerp(red, w, 0.5).y, Vector3.Lerp(red, w, 0.5).z), w];
+    accel.push(
+      { kind: "cc", points: ccOut },
+      { kind: "ca", points: caMotor },
+      { kind: "mec", points: mecRed },
+      ...wheels.map((w) => ({ kind: "mec", points: toWheel(w) })),
+    );
+    regen.push(
+      ...wheels.map((w) => ({ kind: "mec", points: reverse(toWheel(w)) })),
+      { kind: "mec", points: reverse(mecRed) },
+      { kind: "ca", points: reverse(caMotor) },
+      { kind: "cc", points: reverse(ccOut) },
+    );
+  }
   const portToObc = [port, mid(port, obc, 0.15), obc];
   const obcToBat = [obc, batTop(obc), batCore];
   const portToEcu = [port, mid(port, ecu, 0.12), ecu];
@@ -196,33 +231,37 @@ function buildRoutes(P, station) {
 
 // ----------------------------------------------------------------------------- trechos
 
-function makeStream(scene, parent, name, points, kind) {
+function makeMaterials(scene, mode, kind) {
+  const color = Color3.FromHexString(ENERGY_KINDS[kind].color);
+  const tube = new StandardMaterial(`mat-flow-tube-${mode}-${kind}`, scene);
+  tube.disableLighting = true;
+  tube.emissiveColor = color.scale(0.75);
+  tube.diffuseColor = Color3.Black();
+  tube.alpha = 0;
+  tube.fogEnabled = false;
+  const dots = new StandardMaterial(`mat-flow-dots-${mode}-${kind}`, scene);
+  dots.disableLighting = true;
+  dots.emissiveColor = color;
+  dots.diffuseColor = Color3.Black();
+  dots.fogEnabled = false;
+  return { tube, dots };
+}
+
+function makeStream(scene, parent, name, points, kind, mats) {
   const curve = Curve3.CreateCatmullRomSpline(points, 12, false).getPoints();
   const path = new Path3D(curve);
   const length = Math.max(0.2, path.length());
-  const color = Color3.FromHexString(ENERGY_KINDS[kind].color);
 
-  const tubeMat = new StandardMaterial(`mat-flow-tube-${name}`, scene);
-  tubeMat.disableLighting = true;
-  tubeMat.emissiveColor = color.scale(0.75);
-  tubeMat.diffuseColor = Color3.Black();
-  tubeMat.alpha = 0;
-  tubeMat.fogEnabled = false;
   const tube = MeshBuilder.CreateTube(`flow-tube:${name}`, { path: curve, radius: 0.016, tessellation: 8 }, scene);
   tube.parent = parent;
-  tube.material = tubeMat;
+  tube.material = mats.tube;
   tube.renderingGroupId = 1;
   tube.isPickable = false;
   tube.setEnabled(false);
 
-  const dotMat = new StandardMaterial(`mat-flow-dots-${name}`, scene);
-  dotMat.disableLighting = true;
-  dotMat.emissiveColor = color;
-  dotMat.diffuseColor = Color3.Black();
-  dotMat.fogEnabled = false;
   const dots = MeshBuilder.CreateSphere(`flow-dots:${name}`, { diameter: 0.07, segments: 6 }, scene);
   dots.parent = parent;
-  dots.material = dotMat;
+  dots.material = mats.dots;
   dots.renderingGroupId = 1;
   dots.isPickable = false;
   dots.alwaysSelectAsActiveMesh = true;
@@ -238,7 +277,7 @@ function makeStream(scene, parent, name, points, kind) {
     const p = path.getPointAt(i / SAMPLES);
     table.set([p.x, p.y, p.z], i * 3);
   }
-  return { name, kind, tube, tubeMat, dots, dotMat, buffer, table, count, length, offset: Math.random() };
+  return { name, kind, tube, dots, buffer, table, count, length, offset: Math.random() };
 }
 
 function animateStream(s, dt, intensity) {
@@ -268,7 +307,8 @@ function animateStream(s, dt, intensity) {
 // ----------------------------------------------------------------------------- estação de recarga
 
 /**
- * Carregador externo ao lado da porta de recarga, fora da plataforma.
+ * Carregador externo ao lado da porta de recarga, fora da plataforma, e um marcador
+ * luminoso na própria porta (útil quando o modelo não tem a tampa da porta modelada).
  * CA: pedestal com wallbox (mais baixo). CC: gabinete de recarga rápida (mais alto).
  */
 function createChargingStation(scene, parent, port, dims, platformRadius, floorY, spawnLocal) {
@@ -288,7 +328,6 @@ function createChargingStation(scene, parent, port, dims, platformRadius, floorY
   bodyMat.albedoColor = Color3.FromHexString("#1a2738").toLinearSpace();
   bodyMat.metallic = 0.6;
   bodyMat.roughness = 0.35;
-  bodyMat.alpha = 1;
 
   const accent = (hex) => {
     const m = new StandardMaterial(`mat-station-accent-${hex}`, scene);
@@ -325,7 +364,17 @@ function createChargingStation(scene, parent, port, dims, platformRadius, floorY
   dcScreen.position.set(0, 1.3, -0.213);
   for (const m of [cab, dcStrip, dcScreen]) m.parent = dc;
 
-  const meshes = [pole, box, acStrip, acScreen, cab, dcStrip, dcScreen];
+  // Marcador da porta de recarga no carro (anel luminoso voltado para fora).
+  const marker = MeshBuilder.CreateTorus("charge-port-marker", { diameter: 0.11, thickness: 0.018, tessellation: 24 }, scene);
+  marker.parent = parent;
+  marker.position.copyFrom(port);
+  marker.rotation.z = sideways ? Math.PI / 2 : 0;
+  marker.rotation.x = sideways ? 0 : Math.PI / 2;
+  marker.material = accent(PALETTE.cyan);
+  marker.renderingGroupId = 1;
+  marker.setEnabled(false);
+
+  const meshes = [pole, box, acStrip, acScreen, cab, dcStrip, dcScreen, marker];
   for (const m of meshes) m.isPickable = false;
   let type = "ac";
   root.setEnabled(false);
@@ -338,14 +387,16 @@ function createChargingStation(scene, parent, port, dims, platformRadius, floorY
 
   return {
     meshes,
-    glowMeshes: [acStrip, dcStrip],
+    glowMeshes: [acStrip, dcStrip, marker],
     setType(t) {
       type = t;
       ac.setEnabled(t === "ac");
       dc.setEnabled(t === "dc");
     },
     setVisibility(k) {
-      root.setEnabled(k > 0.001);
+      const on = k > 0.001;
+      root.setEnabled(on);
+      marker.setEnabled(on);
       root.scaling.setAll(0.9 + 0.1 * k);
       ac.setEnabled(type === "ac");
       dc.setEnabled(type === "dc");
@@ -391,7 +442,7 @@ function screenPlane(scene, id, w, h, lines, color) {
 
 // ----------------------------------------------------------------------------- rodas
 
-/** Rodas (e discos de freio) giram em torno do eixo X do carro; pinças ficam paradas. */
+/** Rodas (e discos de freio) giram em torno do eixo X do carro; pinças e cubos ficam parados. */
 function prepareWheels(items, parent) {
   const spinning = [
     ...(items.rodas?.meshes ?? []),

@@ -64,15 +64,42 @@ export async function loadVehicle(scene, model, { parent, onProgress }) {
     dims: null,
     info: null,
   };
-  orientVehicle(vehicle, model.rotationDeg);
+  orientVehicle(vehicle, model.rotationDeg, { autoFront: model.autoFront });
   return vehicle;
+}
+
+const FRONT_MARKERS = /headlight|head_?lamp|farol|front_?light/i;
+const REAR_MARKERS = /taillight|tail_?lamp|lanterna|brakelight|brake_?light|reversinglight|rear_?light/i;
+
+/**
+ * Yaw (rad, múltiplo de 90°) que aponta a frente do carro para +Z, deduzido da posição
+ * dos faróis em relação às lanternas. null se o modelo não tiver luzes reconhecíveis.
+ */
+function detectFrontYaw(meshes) {
+  const centroid = (re) => {
+    const list = meshes.filter((m) => re.test(m.name) || re.test(m.parent?.name ?? ""));
+    if (!list.length) return null;
+    const c = new Vector3();
+    for (const m of list) {
+      m.computeWorldMatrix(true);
+      c.addInPlace(m.getBoundingInfo().boundingBox.centerWorld);
+    }
+    return c.scaleInPlace(1 / list.length);
+  };
+  const front = centroid(FRONT_MARKERS);
+  const rear = centroid(REAR_MARKERS);
+  if (!front || !rear) return null;
+  const dir = front.subtract(rear);
+  if (Math.hypot(dir.x, dir.z) < 0.5) return null;
+  const theta = Math.atan2(dir.x, dir.z); // ângulo atual da frente, a partir de +Z
+  return Math.round(-theta / (Math.PI / 2)) * (Math.PI / 2);
 }
 
 /**
  * Aplica rotação (graus) ao contêiner, corrige a escala se a unidade parecer errada,
  * centraliza no prato e apoia as rodas no tampo (y = 0 local).
  */
-export function orientVehicle(vehicle, rotationDeg) {
+export function orientVehicle(vehicle, rotationDeg, { autoFront = false } = {}) {
   const { container, parent } = vehicle;
   const savedSpin = parent.rotation.y;
   parent.rotation.y = 0; // mede no referencial "parado" do prato
@@ -81,6 +108,15 @@ export function orientVehicle(vehicle, rotationDeg) {
   container.rotation.set(Tools.ToRadians(rotationDeg.x), Tools.ToRadians(rotationDeg.y), Tools.ToRadians(rotationDeg.z));
   container.position.setAll(0);
   container.scaling.setAll(1);
+  container.computeWorldMatrix(true);
+  if (autoFront) {
+    const yaw = detectFrontYaw(vehicle.meshes);
+    if (yaw) {
+      container.rotation.y += yaw;
+      rotationDeg = { ...rotationDeg, y: Math.round(rotationDeg.y + Tools.ToDegrees(yaw)) };
+      console.info(`[EV XR] Frente detectada pelos faróis: rotação y ajustada para ${rotationDeg.y}°.`);
+    }
+  }
 
   let box = measure(container);
   let length = Math.max(box.size.x, box.size.z);

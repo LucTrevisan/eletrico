@@ -3,6 +3,7 @@
  *   Etapa 1: showroom, carro, câmera, luzes e VR.
  *   Etapa 2: raio X, identificação de componentes e painéis educativos.
  *   Etapa 3: fluxo de energia (aceleração, regeneração, recarga CA/CC) e simulação.
+ *   Etapa 4: exploded view, portas, seleção aprimorada, hand tracking e interface retrátil.
  *
  * A inicialização é dividida em seções independentes, cada uma com seu próprio
  * tratamento de erro, para que uma falha (ex.: WebXR indisponível) nunca impeça
@@ -12,6 +13,7 @@
  *   C)  showroom, vistas e HUD
  *   C2) componentes: raio X, legendas, seleção e painéis
  *   C3) fluxo de energia e simulação
+ *   C4) exploded view e portas
  *   D)  WebXR (somente se houver suporte)
  */
 import "./styles/main.css";
@@ -30,12 +32,14 @@ import {
   summarizeComponents,
 } from "./vehicle/components.js";
 import { getContent } from "./vehicle/componentContent.js";
+import { createDoors } from "./vehicle/doors.js";
+import { createExplodedView } from "./vehicle/explodedView.js";
 import { createMaterialStates } from "./vehicle/materialStates.js";
 import { createSchematics } from "./vehicle/schematics.js";
 import { createSelection } from "./vehicle/selection.js";
 import { createXRayMode } from "./vehicle/xrayMode.js";
 import { createComponentCallouts } from "./ui/componentCallouts.js";
-import { createComponentLabels } from "./ui/componentLabels.js";
+import { createComponentLabels, createFloatingLabels } from "./ui/componentLabels.js";
 import { createComponentPanel } from "./ui/componentPanel.js";
 import { checkVRSupport, createXRExperience } from "./xr/xrExperience.js";
 import { setupXRInteractions } from "./xr/interactions.js";
@@ -127,7 +131,15 @@ async function boot() {
   let xray = null;
   let selection = null;
   let labels = null;
-  const panel = createComponentPanel(scene, { onClose: () => clearSelection() });
+  let doors = null;
+  let schematics = null;
+  let layoutAxles = null;
+  let explode = null; // C4
+  let explodeLabels = null; // C4
+  const panel = createComponentPanel(scene, {
+    onClose: () => clearSelection(),
+    onAction: (action) => action === "doors" && toggleAllDoors(),
+  });
   const componentItems = {}; // id → { meshes, center (local do prato), size, illustrative }
 
   if (vehicle) {
@@ -138,8 +150,9 @@ async function boot() {
       }
       const states = createMaterialStates(vehicle.meshes.filter((m) => m.isEnabled()));
       const { components, axles } = computeComponentLayout(vehicle, turntable);
+      layoutAxles = axles;
       const missing = INTERNAL_COMPONENTS.filter((id) => !components[id]);
-      const schematics = createSchematics(scene, {
+      schematics = createSchematics(scene, {
         parent: turntable,
         dims,
         axles,
@@ -148,6 +161,7 @@ async function boot() {
       });
       Object.assign(componentItems, components, schematics.items);
       if (missing.length) console.info(`[EV XR] Ausentes no modelo (exibidos como ilustrativos): ${missing.join(", ")}`);
+      doors = createDoors(scene, { items: componentItems, parent: turntable });
 
       const labelItems = INTERNAL_COMPONENTS.filter((id) => componentItems[id]).map((id) => ({
         id,
@@ -210,11 +224,12 @@ async function boot() {
       selection = createSelection(scene, {
         meshesByComponent: new Map(Object.values(componentItems).map((c) => [c.id, c.meshes])),
         states,
-        onSelect: (id) => selectComponent(id),
+        onSelect: (id, mesh) => selectComponent(id, mesh),
         onHover: (id, x, y) => {
           canvas.style.cursor = id ? "pointer" : "";
-          if (id) hud.showTooltip(getContent(id).title, x, y);
-          else hud.hideTooltip();
+          if (!id) return hud.hideTooltip();
+          const doorHint = id === "portas" && doors && !xray?.on;
+          hud.showTooltip(doorHint ? "Porta · clique para abrir ou fechar" : getContent(id).title, x, y);
         },
       });
     } catch (err) {
@@ -223,25 +238,66 @@ async function boot() {
     }
   }
 
+  /** Centro atual (mundo) de um componente — acompanha portas abertas e a vista explodida. */
+  function currentWorldCenter(item) {
+    const min = new Vector3(Infinity, Infinity, Infinity);
+    const max = new Vector3(-Infinity, -Infinity, -Infinity);
+    for (const m of item.meshes) {
+      if (!m.isEnabled()) continue;
+      m.computeWorldMatrix(true);
+      const b = m.getBoundingInfo().boundingBox;
+      min.minimizeInPlace(b.minimumWorld);
+      max.maximizeInPlace(b.maximumWorld);
+    }
+    return Number.isFinite(min.x) ? Vector3.Center(min, max) : Vector3.TransformCoordinates(item.center, turntable.getWorldMatrix());
+  }
+
+  /** Conteúdo educativo + nota do veículo exibido (config: notes). */
+  function contentFor(id) {
+    const content = getContent(id);
+    const note = vehicle?.model.notes?.[id];
+    return note ? { ...content, modelNote: { label: `No ${vehicle.model.label}`, text: note } } : content;
+  }
+
+  const doorActions = () => (doors ? [{ id: "doors", label: doors.anyOpen ? "Fechar portas" : "Abrir portas" }] : []);
+
+  function toggleAllDoors() {
+    if (!doors) return hud.toast("Este modelo não tem portas separadas para abrir.");
+    if (explode?.exploded) setExploded(false);
+    const open = doors.toggleAll();
+    if (panel.openId === "portas") panel.setActions(doorActions());
+    hud.toast(open ? "Portas abertas." : "Portas fechadas.", 1600);
+  }
+
   /** Seleciona um componente: destaca, abre o painel e aproxima a câmera (desktop). */
-  function selectComponent(id) {
+  function selectComponent(id, mesh) {
     const item = componentItems[id];
     if (!item || !selection) return;
     userTookControl = true;
-    const content = getContent(id);
-    // Componentes internos só ficam visíveis com o raio X.
-    if (INTERNAL_COMPONENTS.includes(id) && !xray.on) xray.set(true);
+    // Portas: o clique (mouse, toque, gatilho ou pinça) abre/fecha a porta clicada.
+    if (id === "portas" && doors && mesh && !mesh.metadata?.evxr?.labelFor && !explode?.exploded) {
+      const open = doors.toggleFor(mesh);
+      if (open !== null) {
+        if (panel.openId === "portas") panel.setActions(doorActions());
+        return;
+      }
+    }
+    const content = contentFor(id);
+    const actions = id === "portas" ? doorActions() : [];
+    // Componentes internos só ficam visíveis com o raio X (ou com o carro explodido).
+    if (INTERNAL_COMPONENTS.includes(id) && !xray.on && !explode?.exploded) xray.set(true);
     showroom.turntable.halt();
     setTurntable(false);
     selection.setSelected(id);
     labels?.setActive(id);
-    const world = Vector3.TransformCoordinates(item.center, turntable.getWorldMatrix());
+    explodeLabels?.setActive(id);
+    const world = currentWorldCenter(item);
     if (xrApi?.inXR) {
-      panel.showVR(id, content, { illustrative: item.illustrative, camera: xrApi.camera, target: world });
+      panel.showVR(id, content, { illustrative: item.illustrative, actions, camera: xrApi.camera, target: world });
       return;
     }
     hud.closeHelp();
-    panel.showDesktop(id, content, { illustrative: item.illustrative });
+    panel.showDesktop(id, content, { illustrative: item.illustrative, actions });
     const size = Math.max(item.size.x, item.size.y, item.size.z);
     // Peças do tamanho do carro (carroceria, portas, rodas) não pedem aproximação.
     if (size < Math.min(2.6, dims.length * 0.55)) {
@@ -253,6 +309,7 @@ async function boot() {
   function clearSelection() {
     selection?.setSelected(null);
     labels?.setActive(null);
+    explodeLabels?.setActive(null);
     panel.hide();
   }
 
@@ -271,6 +328,8 @@ async function boot() {
         parent: turntable,
         items: componentItems,
         dims,
+        axles: layoutAxles,
+        chargePort: vehicle.model.chargePort,
         platformRadius: showroom.radius,
         floorY: -SHOWROOM.platformHeight,
         spawnLocal: showroom.spawn.subtract(turntable.position),
@@ -344,6 +403,8 @@ async function boot() {
     energy.on = on;
     userTookControl = true;
     if (on) {
+      if (explode?.exploded) setExploded(false); // o fluxo usa as posições montadas
+      doors?.closeAll();
       energy.xrayBefore = !!xray?.on;
       xray?.set(true); // o fluxo passa por dentro do carro
       clearSelection();
@@ -388,6 +449,108 @@ async function boot() {
     }
   });
 
+  // ------------------------------------------------------------------ C4) exploded view (Etapa 4)
+  /** Legendas da vista explodida: âncoras móveis no grupo de peças mais visível (frente-esquerda). */
+  const EXPLODE_LABEL_IDS = ["carroceria", "portas", "interior", "rodas", "chassi", ...INTERNAL_COMPONENTS];
+  function makeAnchors(ids) {
+    const list = ids
+      .filter((id) => componentItems[id])
+      .map((id) => ({
+        id,
+        short: getContent(id).short,
+        color: getContent(id).color,
+        illustrative: !!componentItems[id].illustrative,
+        meshes: componentItems[id].meshes,
+        center: new Vector3(),
+      }));
+    const tmpMin = new Vector3();
+    const tmpMax = new Vector3();
+    function update() {
+      const inv = turntable.getWorldMatrix().clone().invert();
+      for (const a of list) {
+        const groups = new Map();
+        for (const m of a.meshes) {
+          if (!m.isEnabled()) continue;
+          const k = m.parent?.uniqueId ?? 0;
+          if (!groups.has(k)) groups.set(k, []);
+          groups.get(k).push(m);
+        }
+        let best = null;
+        for (const g of groups.values()) {
+          tmpMin.setAll(Infinity);
+          tmpMax.setAll(-Infinity);
+          for (const m of g) {
+            m.computeWorldMatrix(true);
+            const b = m.getBoundingInfo().boundingBox;
+            tmpMin.minimizeInPlace(b.minimumWorld);
+            tmpMax.maximizeInPlace(b.maximumWorld);
+          }
+          const c = Vector3.TransformCoordinates(Vector3.Center(tmpMin, tmpMax), inv);
+          if (!best || c.x - c.z < best.x - best.z) best = c;
+        }
+        if (best) a.center.copyFrom(best);
+      }
+    }
+    update();
+    return { list, update };
+  }
+
+  if (vehicle && componentItems.carroceria) {
+    try {
+      explode = createExplodedView(scene, { vehicle, parent: turntable, dims, schematics });
+      const anchors = makeAnchors(EXPLODE_LABEL_IDS);
+      const callouts = createComponentCallouts(scene, {
+        items: anchors.list,
+        parent: turntable,
+        carBounds: {
+          min: new Vector3(-dims.width / 2 - 0.6, 0, -dims.length / 2 - 0.7),
+          max: new Vector3(dims.width / 2 + 0.6, dims.height + 1.45, dims.length / 2 + 0.7),
+        },
+        onSelect: (id) => selectComponent(id),
+      });
+      const floating = createFloatingLabels(scene, { items: anchors.list, parent: turntable });
+      let level = 0;
+      explodeLabels = {
+        setVisibility(k) {
+          level = k;
+          const inXR = !!xrApi?.inXR;
+          floating.setVisibility(inXR ? k : 0);
+          callouts.setVisibility(inXR ? 0 : k);
+        },
+        setActive: (id) => callouts.setActive(id),
+        refresh() {
+          this.setVisibility(level);
+        },
+      };
+      // Só recalcula as âncoras enquanto as peças se movem (custo zero com o carro parado).
+      scene.onBeforeRenderObservable.add(() => {
+        if (!explode.animating) return;
+        anchors.update();
+        floating.update();
+      });
+    } catch (err) {
+      console.error("[EV XR] Falha ao preparar a vista explodida:", err);
+    }
+  }
+
+  function setExploded(on) {
+    if (!explode) return hud.toast("Vista explodida indisponível neste modelo.");
+    if (on === explode.exploded) return;
+    userTookControl = true;
+    if (on && energy.on) setEnergy(false);
+    clearSelection();
+    doors?.closeAll();
+    explode.set(on);
+    labels?.setFilter(on ? [] : null); // as legendas do raio X dão lugar às da vista explodida
+    explodeLabels?.setVisibility(on ? 1 : 0);
+    hud.setExplode(on);
+    vrMenu?.setExplodeState(on);
+    if (!xrApi?.inXR) {
+      hud.setActiveView(null);
+      views.flyTo(views.current ?? "hero", { radiusScale: on ? 1.32 : 1 });
+    }
+  }
+
   function toggleTurntable() {
     if (energy.on) return hud.toast("A plataforma fica parada durante o fluxo de energia.");
     userTookControl = true;
@@ -407,10 +570,18 @@ async function boot() {
     onToggleTurntable: toggleTurntable,
     onToggleXRay: toggleXRay,
     onToggleEnergy: () => setEnergy(!energy.on),
+    onToggleExplode: () => setExploded(!explode?.exploded),
+    onToggleDoors: toggleAllDoors,
     onSelectComponent: (id) => selectComponent(id),
     onEscape: () => (panel.openId ? clearSelection() : energy.on && setEnergy(false)),
     onEnterVR: () => enterVR(),
   });
+  hud.setCredit(vehicle?.model.credit);
+
+  // Painéis abertos deslocam o carro para o centro da área livre da tela (consulta leve, 4×/s).
+  setInterval(() => {
+    if (!xrApi?.inXR) views.setScreenInsets(hud.getInsets());
+  }, 250);
   // Ao arrastar/zoom manual, nenhuma vista predefinida fica marcada como ativa.
   for (const type of ["pointerdown", "wheel"]) {
     canvas.addEventListener(type, () => hud.setActiveView(null), { passive: true });
@@ -462,6 +633,7 @@ async function boot() {
     vrMenu.show();
     showroom.plaque.root.setEnabled(true);
     labels?.refresh(); // legendas 3D no headset
+    explodeLabels?.refresh();
     if (energy.on) {
       energyPanel.hideDesktop();
       energyPanel.showVR(xrApi.camera);
@@ -472,6 +644,7 @@ async function boot() {
   function onExitXR() {
     clearSelection();
     labels?.refresh(); // de volta às legendas em tela
+    explodeLabels?.refresh();
     if (energy.on) {
       energyPanel.hideVR();
       energyPanel.showDesktop();
@@ -495,6 +668,7 @@ async function boot() {
       vrMenu = createVRMenu(scene, {
         onToggleXRay: toggleXRay,
         onToggleEnergy: () => setEnergy(!energy.on),
+        onToggleExplode: () => setExploded(!explode?.exploded),
         onToggleTurntable: toggleTurntable,
         onReturnToSpawn: () => xrApi?.returnToSpawn(),
         onExitVR: () => xrApi?.exit(),
@@ -502,6 +676,7 @@ async function boot() {
       vrMenu.setTurntableState(showroom.turntable.spinning);
       vrMenu.setXRayState(!!xray?.on);
       vrMenu.setEnergyState(energy.on);
+      vrMenu.setExplodeState(!!explode?.exploded);
       return vrMenu;
     });
     return vrMenuPromise;
@@ -521,7 +696,10 @@ async function boot() {
         onEnter: onEnterXR,
         onExit: onExitXR,
       });
-      setupXRInteractions(xrApi, { onSummonMenu: () => vrMenu.summon(xrApi.camera) });
+      setupXRInteractions(xrApi, {
+        onSummonMenu: () => vrMenu.summon(xrApi.camera),
+        onInputModeChange: (mode) => vrMenu.setInputMode(mode),
+      });
       hud.setVR("available");
     } catch (err) {
       console.warn("[EV XR] WebXR indisponível:", err);
