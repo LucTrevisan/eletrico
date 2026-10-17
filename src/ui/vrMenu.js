@@ -12,7 +12,7 @@ const ACTIVE_BG = "rgba(0, 229, 255, 0.32)";
  * acionado pelo raio do controle (gatilho).
  * Fica baixo e à direita do ponto de partida, para não cobrir o carro.
  */
-export function createVRMenu(scene, { onToggleXRay, onToggleTurntable, onReturnToSpawn, onExitVR }) {
+export function createVRMenu(scene, { onToggleXRay, onToggleEnergy, onToggleTurntable, onReturnToSpawn, onExitVR }) {
   // ~0,64 m a 0,75 m de distância ≈ 45° do campo de visão: legível sem dominar a cena.
   const width = 0.64;
   const height = 0.36;
@@ -57,16 +57,16 @@ export function createVRMenu(scene, { onToggleXRay, onToggleTurntable, onReturnT
 
   const makeButton = (name, label, accent, onClick) => {
     const b = Button.CreateSimpleButton(name, label);
-    b.width = "236px";
+    b.width = "190px";
     b.height = "150px";
-    b.paddingLeft = "10px";
-    b.paddingRight = "10px";
+    b.paddingLeft = "8px";
+    b.paddingRight = "8px";
     b.cornerRadius = 26;
     b.thickness = 3;
     b.color = accent;
     b.background = IDLE_BG;
     b.fontFamily = FONT;
-    b.fontSize = 31;
+    b.fontSize = 28;
     b.fontWeight = "600";
     if (b.textBlock) {
       b.textBlock.color = PALETTE.text;
@@ -80,6 +80,7 @@ export function createVRMenu(scene, { onToggleXRay, onToggleTurntable, onReturnT
   };
 
   const xrayButton = makeButton("vr-btn-xray", "RAIO X", PALETTE.cyan, () => onToggleXRay?.());
+  const energyButton = makeButton("vr-btn-energy", "Energia", PALETTE.blue, () => onToggleEnergy?.());
   const turntableButton = makeButton("vr-btn-turntable", "Girar plataforma", PALETTE.cyan, () => onToggleTurntable?.());
   makeButton("vr-btn-spawn", "Voltar ao início", PALETTE.blue, () => onReturnToSpawn?.());
   makeButton("vr-btn-exit", "Sair do VR", PALETTE.orange, () => onExitVR?.());
@@ -140,6 +141,11 @@ export function createVRMenu(scene, { onToggleXRay, onToggleTurntable, onReturnT
       xrayButton.metadata = { active: on };
       xrayButton.background = on ? ACTIVE_BG : IDLE_BG;
       if (xrayButton.textBlock) xrayButton.textBlock.text = on ? "RAIO X: ligado" : "RAIO X";
+    },
+    setEnergyState(on) {
+      energyButton.metadata = { active: on };
+      energyButton.background = on ? ACTIVE_BG : IDLE_BG;
+      if (energyButton.textBlock) energyButton.textBlock.text = on ? "Energia: ligado" : "Energia";
     },
     setTurntableState(on) {
       status.text = on ? "Plataforma girando" : "Plataforma parada";

@@ -27,7 +27,9 @@ export function createComponentCallouts(scene, { items, parent, carBounds, onSel
     button.type = "button";
     button.className = "callout";
     button.style.setProperty("--c", item.color);
-    button.textContent = item.short;
+    const text = document.createElement("span");
+    text.textContent = item.short;
+    button.append(text);
     if (item.illustrative) {
       const tag = document.createElement("small");
       tag.textContent = "ilustrativo";
@@ -40,7 +42,7 @@ export function createComponentCallouts(scene, { items, parent, carBounds, onSel
     dot.setAttribute("r", "4");
     for (const el of [line, dot]) el.style.setProperty("--c", item.color);
     svg.append(line, dot);
-    return { ...item, button, line, dot, world: new Vector3(), screen: { x: 0, y: 0, z: 0 } };
+    return { ...item, button, text, line, dot, world: new Vector3(), screen: { x: 0, y: 0, z: 0 } };
   });
 
   // Cantos da caixa do carro (local do prato) — para saber onde o carro está na tela.
@@ -53,6 +55,7 @@ export function createComponentCallouts(scene, { items, parent, carBounds, onSel
 
   let visibility = 0;
   let activeId = null;
+  let filter = null; // Set de ids visíveis (null = todos)
 
   function project(local, out) {
     const engine = scene.getEngine();
@@ -129,7 +132,7 @@ export function createComponentCallouts(scene, { items, parent, carBounds, onSel
     const limits = {
       top: (header?.bottom ?? 60) + 12,
       bottom: (toolbar?.top ?? canvas.clientHeight) - 12,
-      leftObstacles: [rectOf("vehicleCard")].filter(Boolean),
+      leftObstacles: [rectOf("vehicleCard"), rectOf("energyPanel")].filter(Boolean),
       rightObstacles: [rectOf("componentPanel"), rectOf("helpPanel")].filter(Boolean),
     };
 
@@ -137,7 +140,7 @@ export function createComponentCallouts(scene, { items, parent, carBounds, onSel
     const right = [];
     for (const e of entries) {
       project(e.center, e.screen);
-      e.visible = e.screen.z > 0 && e.screen.z < 1;
+      e.visible = e.screen.z > 0 && e.screen.z < 1 && (!filter || filter.has(e.id));
       if (!e.visible) continue;
       (e.screen.x < centerX ? left : right).push(e);
     }
@@ -168,6 +171,18 @@ export function createComponentCallouts(scene, { items, parent, carBounds, onSel
     },
     setActive(id) {
       activeId = id;
+    },
+    /** Mostra só as legendas destes componentes (null = todas). */
+    setFilter(ids) {
+      filter = ids ? new Set(ids) : null;
+    },
+    /** Texto alternativo temporário (null volta ao nome curto). */
+    setText(id, value) {
+      const e = entries.find((x) => x.id === id);
+      if (!e) return;
+      e.text.textContent = value ?? e.short;
+      e.measured = false;
+      e.w = e.h = undefined;
     },
   };
 }

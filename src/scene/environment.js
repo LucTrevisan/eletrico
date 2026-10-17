@@ -282,6 +282,10 @@ export function createShowroom(scene, quality, { dims, turntable, vehicle, spawn
     setGlowEnabled(on) {
       if (glow) glow.isEnabled = on;
     },
+    /** Inclui malhas emissivas criadas depois (ex.: partículas do fluxo de energia) no brilho. */
+    addGlow(meshes) {
+      if (glow) for (const m of meshes) glow.addIncludedOnlyMesh(m);
+    },
     get hasMirror() {
       return !!mirror;
     },

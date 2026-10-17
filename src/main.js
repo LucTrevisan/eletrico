@@ -2,6 +2,7 @@
  * EV Experience XR — ponto de entrada.
  *   Etapa 1: showroom, carro, câmera, luzes e VR.
  *   Etapa 2: raio X, identificação de componentes e painéis educativos.
+ *   Etapa 3: fluxo de energia (aceleração, regeneração, recarga CA/CC) e simulação.
  *
  * A inicialização é dividida em seções independentes, cada uma com seu próprio
  * tratamento de erro, para que uma falha (ex.: WebXR indisponível) nunca impeça
@@ -10,11 +11,12 @@
  *   B)  carregamento do veículo
  *   C)  showroom, vistas e HUD
  *   C2) componentes: raio X, legendas, seleção e painéis
+ *   C3) fluxo de energia e simulação
  *   D)  WebXR (somente se houver suporte)
  */
 import "./styles/main.css";
 import { SceneInstrumentation, TransformNode, Vector3 } from "@babylonjs/core";
-import { SHOWROOM, URL_PARAMS, VEHICLE, VEHICLE_MODELS } from "./config.js";
+import { SHOWROOM, SIMULATION, URL_PARAMS, VEHICLE, VEHICLE_MODELS } from "./config.js";
 import { applyResolution, createCamera, createEngine, createScene, createViewController } from "./scene/createScene.js";
 import { createShowroom } from "./scene/environment.js";
 import { createLighting } from "./scene/lighting.js";
@@ -39,6 +41,10 @@ import { checkVRSupport, createXRExperience } from "./xr/xrExperience.js";
 import { setupXRInteractions } from "./xr/interactions.js";
 import { createHud } from "./ui/hud.js";
 import { createVRMenu } from "./ui/vrMenu.js";
+import { createEnergyPanel } from "./ui/energyPanel.js";
+import { createEnergyFlow } from "./simulation/energyFlow.js";
+import { ENERGY_MODES } from "./simulation/energyContent.js";
+import { createVehicleSimulation } from "./simulation/vehicleSimulation.js";
 
 const hud = createHud();
 
@@ -179,6 +185,14 @@ async function boot() {
           labels3d.setActive(id);
           callouts.setActive(id);
         },
+        setFilter(ids) {
+          labels3d.setFilter(ids);
+          callouts.setFilter(ids);
+        },
+        setText(id, value) {
+          labels3d.setText(id, value);
+          callouts.setText(id, value);
+        },
         refresh() {
           this.setVisibility(labelLevel);
         },
@@ -249,6 +263,138 @@ async function boot() {
     xray.toggle();
   }
 
+  // ------------------------------------------------------------------ C3) fluxo de energia e simulação (Etapa 3)
+  const sim = createVehicleSimulation(SIMULATION);
+  let flow = null;
+  if (vehicle && componentItems.bateria) {
+    try {
+      flow = createEnergyFlow(scene, {
+        parent: turntable,
+        items: componentItems,
+        dims,
+        platformRadius: showroom.radius,
+        floorY: -SHOWROOM.platformHeight,
+        spawnLocal: showroom.spawn.subtract(turntable.position),
+        addGlow: (meshes) => showroom.addGlow(meshes),
+      });
+    } catch (err) {
+      console.error("[EV XR] Falha ao preparar o fluxo de energia:", err);
+    }
+  }
+
+  const energy = { on: false, tab: "accel", chargeType: "ac", xrayBefore: false, lastUi: 0 };
+  const energyModeKey = () => (energy.tab === "charge" ? `charge-${energy.chargeType}` : energy.tab);
+
+  const energyPanel = createEnergyPanel(scene, {
+    onTab: (tab) => setEnergyTab(tab, { user: true }),
+    onHold(name, on) {
+      if (!energy.on) return;
+      if (on && name === "accel") setEnergyTab("accel");
+      if (on && name === "brake" && sim.snapshot().speedKmh > 1) setEnergyTab("regen");
+      sim.setInput(name, on);
+    },
+    onChargeType(type) {
+      if (sim.snapshot().charging) return;
+      energy.chargeType = type;
+      sim.setChargeType(type);
+      applyEnergyMode();
+      energyPanel.update(sim.snapshot());
+    },
+    onChargeToggle() {
+      if (sim.snapshot().charging) sim.stopCharging();
+      else {
+        const r = sim.startCharging(energy.chargeType);
+        if (!r.ok) hud.toast(r.reason === "bateria-cheia" ? "A bateria já está carregada." : "Pare o veículo para recarregar.");
+      }
+      energyPanel.update(sim.snapshot()); // retorno imediato (sem esperar o próximo ciclo da interface)
+    },
+    onClose: () => setEnergy(false),
+  });
+
+  /** Troca o modo exibido. Pela aba (user), prepara a demonstração: 80 km/h para frear, parado para recarregar. */
+  function setEnergyTab(tab, { user = false } = {}) {
+    if (tab === energy.tab && !user) return;
+    energy.tab = tab;
+    if (user) {
+      const snap = sim.snapshot();
+      if (tab === "regen" && snap.speedKmh < 20) {
+        sim.setSpeedKmh(80);
+        hud.toast("Demonstração: veículo a 80 km/h. Segure “Frear” para regenerar energia.");
+      }
+      if (tab === "charge" && snap.speedKmh > 0.5) {
+        sim.setSpeedKmh(0);
+        hud.toast("Veículo estacionado para a recarga.");
+      }
+    }
+    if (tab !== "charge" && sim.snapshot().charging) sim.stopCharging();
+    applyEnergyMode();
+  }
+
+  function applyEnergyMode() {
+    const key = energyModeKey();
+    const mode = ENERGY_MODES[key];
+    flow?.setMode(key);
+    labels?.setFilter(mode.labels);
+    for (const id of INTERNAL_COMPONENTS) labels?.setText(id, mode.rename[id] ?? null);
+    energyPanel.setMode(energy.tab, key);
+  }
+
+  function setEnergy(on) {
+    if (on === energy.on) return;
+    if (on && !flow) return hud.toast("Fluxo de energia indisponível: nenhum modelo 3D carregado.");
+    energy.on = on;
+    userTookControl = true;
+    if (on) {
+      energy.xrayBefore = !!xray?.on;
+      xray?.set(true); // o fluxo passa por dentro do carro
+      clearSelection();
+      setTurntable(false);
+      alignTurntable(); // carregador externo alinhado com a porta de recarga
+      applyEnergyMode();
+      energyPanel.update(sim.snapshot());
+      if (xrApi?.inXR) energyPanel.showVR(xrApi.camera);
+      else energyPanel.showDesktop();
+    } else {
+      sim.releaseInputs();
+      sim.stopCharging();
+      flow?.setMode(null);
+      flow?.setFlow(0);
+      flow?.setWheelSpeed(0);
+      labels?.setFilter(null);
+      for (const id of INTERNAL_COMPONENTS) labels?.setText(id, null);
+      if (!energy.xrayBefore) xray?.set(false);
+      energyPanel.hideDesktop();
+      energyPanel.hideVR();
+    }
+    hud.setEnergy(on);
+    vrMenu?.setEnergyState(on);
+  }
+
+  scene.onBeforeRenderObservable.add(() => {
+    if (!energy.on) return;
+    const snap = sim.step(scene.getEngine().getDeltaTime() / 1000);
+    // O modo exibido acompanha o que o veículo está fazendo (coerência entre simulação e fluxo).
+    if (snap.state === "acelerando" && energy.tab !== "accel") setEnergyTab("accel");
+    else if (snap.state === "regenerando" && energy.tab !== "regen") setEnergyTab("regen");
+    const flowing =
+      (snap.state === "acelerando" && energy.tab === "accel") ||
+      (snap.state === "regenerando" && energy.tab === "regen") ||
+      (snap.state === "recarregando" && energy.tab === "charge");
+    flow?.setFlow(flowing ? snap.intensity : 0);
+    flow?.setWheelSpeed(snap.speedKmh);
+    const now = performance.now();
+    if (now - energy.lastUi > 100) {
+      energy.lastUi = now;
+      energyPanel.update(snap);
+    }
+  });
+
+  function toggleTurntable() {
+    if (energy.on) return hud.toast("A plataforma fica parada durante o fluxo de energia.");
+    userTookControl = true;
+    setTurntable(!showroom.turntable.spinning);
+  }
+
   hud.bind({
     onView(name) {
       if (xrApi?.inXR) return;
@@ -259,13 +405,11 @@ async function boot() {
       hud.setActiveView(name);
       views.flyTo(name);
     },
-    onToggleTurntable() {
-      userTookControl = true;
-      setTurntable(!showroom.turntable.spinning);
-    },
+    onToggleTurntable: toggleTurntable,
     onToggleXRay: toggleXRay,
+    onToggleEnergy: () => setEnergy(!energy.on),
     onSelectComponent: (id) => selectComponent(id),
-    onEscape: () => clearSelection(),
+    onEscape: () => (panel.openId ? clearSelection() : energy.on && setEnergy(false)),
     onEnterVR: () => enterVR(),
   });
   // Ao arrastar/zoom manual, nenhuma vista predefinida fica marcada como ativa.
@@ -319,12 +463,20 @@ async function boot() {
     vrMenu.show();
     showroom.plaque.root.setEnabled(true);
     labels?.refresh(); // legendas 3D no headset
+    if (energy.on) {
+      energyPanel.hideDesktop();
+      energyPanel.showVR(xrApi.camera);
+    }
     hud.setVR("in-xr");
   }
 
   function onExitXR() {
     clearSelection();
     labels?.refresh(); // de volta às legendas em tela
+    if (energy.on) {
+      energyPanel.hideVR();
+      energyPanel.showDesktop();
+    }
     vrMenu.hide();
     showroom.plaque.root.setEnabled(false);
     showroom.setMirrorEnabled(quality.mirror);
@@ -341,12 +493,14 @@ async function boot() {
     if (!vrMenu) {
       vrMenu = createVRMenu(scene, {
         onToggleXRay: toggleXRay,
-        onToggleTurntable: () => setTurntable(!showroom.turntable.spinning),
+        onToggleEnergy: () => setEnergy(!energy.on),
+        onToggleTurntable: toggleTurntable,
         onReturnToSpawn: () => xrApi?.returnToSpawn(),
         onExitVR: () => xrApi?.exit(),
       });
       vrMenu.setTurntableState(showroom.turntable.spinning);
       vrMenu.setXRayState(!!xray?.on);
+      vrMenu.setEnergyState(energy.on);
     }
     return vrMenu;
   }
@@ -401,6 +555,13 @@ async function boot() {
       return xray?.on;
     },
     /** Seleciona um componente pelo id (ex.: "bateria", "motor", "inversor"). */
+    /** Liga/desliga o fluxo de energia; `aba`: "accel" | "regen" | "charge". */
+    energia(on = !energy.on, aba) {
+      setEnergy(on);
+      if (on && aba) setEnergyTab(aba, { user: true });
+      return energy.on;
+    },
+    simulacao: () => sim.snapshot(),
     selecionar(id) {
       if (!componentItems[id]) return console.warn("Disponíveis:", Object.keys(componentItems).join(", "));
       selectComponent(id);

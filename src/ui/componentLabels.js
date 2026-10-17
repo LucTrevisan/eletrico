@@ -19,6 +19,7 @@ export function createComponentLabels(scene, { items, parent, roofY, halfLength 
   const entries = placed.map((p) => buildLabel(scene, p, parent));
   let activeId = null;
   let visibility = 0;
+  let filter = null;
 
   // Tamanho aparente mínimo: legendas distantes crescem um pouco para continuarem legíveis.
   const tmp = new Vector3();
@@ -36,7 +37,7 @@ export function createComponentLabels(scene, { items, parent, roofY, halfLength 
   function setVisibility(k) {
     visibility = k;
     for (const e of entries) {
-      setEnabled(e, k > 0.001);
+      setEnabled(e, k > 0.001 && (!filter || filter.has(e.id)));
       const emphasis = !activeId || activeId === e.id ? 1 : 0.45;
       e.plane.material.alpha = k * emphasis;
       e.line.alpha = 0.9 * k * emphasis;
@@ -52,6 +53,14 @@ export function createComponentLabels(scene, { items, parent, roofY, halfLength 
     setActive(id) {
       activeId = id;
       setVisibility(visibility);
+    },
+    setFilter(ids) {
+      filter = ids ? new Set(ids) : null;
+      setVisibility(visibility);
+    },
+    setText(id, value) {
+      const e = entries.find((x) => x.id === id);
+      if (e) drawLabel(e.tex, { ...e.item, short: value ?? e.item.short });
     },
   };
 }
@@ -126,7 +135,7 @@ function buildLabel(scene, p, parent) {
   dot.renderingGroupId = 1;
   dot.isPickable = false;
 
-  return { id: p.id, plane, line, dot };
+  return { id: p.id, plane, line, dot, tex, item: p };
 }
 
 function drawLabel(tex, p) {

@@ -107,6 +107,32 @@ export const XR = {
 };
 
 /**
+ * Simulação educativa (Etapa 3). VALORES DEMONSTRATIVOS, plausíveis para um SUV
+ * elétrico médio — não são especificações nem medições do veículo exibido.
+ */
+export const SIMULATION = {
+  massKg: 1900,
+  batteryKwh: 70,
+  initialSoc: 72,
+  maxPowerKw: 150, // potência máxima de tração retirada da bateria
+  maxRegenKw: 60, // potência máxima de regeneração devolvida à bateria
+  maxAccel: 3.6, // m/s² (limite de aderência/torque em baixa velocidade)
+  brakeDecel: 3.0, // m/s² ao segurar "Frear"
+  maxSpeedKmh: 160,
+  driveEfficiency: 0.9, // bateria → rodas
+  regenEfficiency: 0.7, // rodas → bateria
+  auxKw: 0.6, // eletrônica, iluminação, climatização leve
+  rollingCoef: 0.011,
+  dragAreaM2: 0.8, // Cd × área frontal
+  regenMinKmh: 8, // abaixo disso a regeneração some e o freio a disco completa a parada
+  regenSocLimit: 95, // acima disso a bateria aceita menos regeneração
+  lowSoc: 8, // abaixo disso a potência de tração é reduzida
+  acKw: 7.4, // recarga CA (carregador de bordo)
+  dcKw: 100, // recarga rápida CC (pico, cai perto da carga completa)
+  chargeTimeScale: 60, // na recarga, 1 s de tela = 1 min simulado
+};
+
+/**
  * Parâmetros de URL úteis para teste: ?q=low|medium|high, ?nointro, ?debug, ?model=models/x.glb,
  * ?ilustrativo (esconde os componentes internos reais para testar as representações ilustrativas).
  */

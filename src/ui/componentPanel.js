@@ -72,6 +72,7 @@ function createDesktopPanel(onClose) {
         el.extra.textContent = c.extra.text;
       }
       el.root.hidden = false;
+      document.body.classList.add("cp-open");
       // reinicia a animação de entrada
       el.root.classList.remove("is-entering");
       void el.root.offsetWidth;
@@ -79,6 +80,7 @@ function createDesktopPanel(onClose) {
     },
     hide() {
       el.root.hidden = true;
+      document.body.classList.remove("cp-open");
     },
   };
 }

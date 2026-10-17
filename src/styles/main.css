@@ -689,6 +689,350 @@ button {
   outline-offset: 2px;
 }
 
+/* ------------------------------------------------------------------ fluxo de energia + simulação */
+
+.tool-energy[aria-pressed="true"] {
+  color: #04121f;
+  background: linear-gradient(135deg, #ffb86b, var(--orange));
+  border-color: transparent;
+  box-shadow: 0 0 18px rgba(255, 159, 67, 0.45);
+}
+
+/* Com o painel de energia aberto, o cartão do veículo mostra só nome e status. */
+body.energy-open .vehicle-card .dims {
+  display: none;
+}
+
+.energy-panel {
+  position: absolute;
+  top: calc(max(16px, env(safe-area-inset-top)) + 58px + 112px);
+  left: var(--gutter);
+  width: 340px;
+  max-height: calc(100dvh - 58px - 112px - 104px - max(16px, env(safe-area-inset-top)));
+  overflow-y: auto;
+  padding: 12px 16px 14px;
+  border-radius: var(--radius);
+  background: var(--glass-strong);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(14px);
+  animation: rise 0.3s ease;
+  scrollbar-width: thin;
+}
+
+.energy-panel header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-right: -8px;
+}
+
+.ep-eyebrow,
+.ep-sim h4 {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cyan);
+}
+
+.ep-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1.45fr 0.9fr;
+  gap: 4px;
+  margin: 4px 0 10px;
+  padding: 3px;
+  border-radius: 12px;
+  background: rgba(245, 247, 250, 0.06);
+}
+
+.ep-tabs button,
+.ep-charge-type button {
+  padding: 7px 4px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.ep-tabs button[aria-selected="true"],
+.ep-charge-type button[aria-pressed="true"] {
+  color: #04121f;
+  background: linear-gradient(135deg, var(--blue), var(--cyan));
+}
+
+.ep-charge-type button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.energy-panel h3 {
+  margin: 0 0 4px;
+  font-size: 14.5px;
+}
+
+.ep-text {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: rgba(245, 247, 250, 0.82);
+}
+
+.ep-chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 18px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.ep-chain li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 9px;
+  border-radius: 9px;
+  border: 1px solid var(--c);
+  background: color-mix(in srgb, var(--c) 10%, transparent);
+}
+
+.ep-chain li:not(:last-child)::after {
+  content: "→";
+  position: absolute;
+  right: -15px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.ep-chain b {
+  font-size: 11.5px;
+}
+
+.ep-chain small {
+  font-size: 9.5px;
+  color: var(--c);
+}
+
+.ep-key {
+  display: flex;
+  gap: 14px;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.ep-key li::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--c);
+  box-shadow: 0 0 6px var(--c);
+}
+
+.ep-sim {
+  padding-top: 10px;
+  border-top: 1px solid rgba(0, 184, 255, 0.2);
+}
+
+.ep-sim h4 {
+  margin: 0 0 8px;
+}
+
+.ep-stats {
+  display: grid;
+  grid-template-columns: 1fr 1.15fr 1fr;
+  gap: 8px;
+}
+
+.ep-stats span {
+  display: block;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ep-stats b {
+  font-size: 21px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ep-stats small {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.ep-stats em {
+  display: block;
+  font-size: 10px;
+  font-style: normal;
+  color: var(--muted);
+}
+
+.ep-soc {
+  display: block;
+  height: 4px;
+  margin-top: 3px;
+  border-radius: 4px;
+  background: rgba(245, 247, 250, 0.12);
+  overflow: hidden;
+}
+
+.ep-soc > i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, var(--blue), var(--cyan));
+  transition: width 0.2s linear;
+}
+
+.ep-soc > i[data-level="low"] {
+  background: var(--orange);
+}
+
+.ep-soc > i[data-level="charging"] {
+  background: linear-gradient(90deg, var(--blue), var(--cyan), var(--blue));
+  background-size: 200% 100%;
+  animation: charging 1.2s linear infinite;
+}
+
+.ep-state {
+  min-height: 2.4em;
+  margin: 8px 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+#simState {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-weight: 700;
+  color: var(--text);
+  border: 1px solid rgba(245, 247, 250, 0.25);
+}
+
+#simState[data-state="acelerando"] {
+  color: var(--cyan);
+  border-color: var(--cyan);
+}
+
+#simState[data-state="regenerando"] {
+  color: var(--orange);
+  border-color: var(--orange);
+}
+
+#simState[data-state="recarregando"] {
+  color: var(--blue);
+  border-color: var(--blue);
+}
+
+.ep-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.ep-controls-charge {
+  grid-template-columns: 1fr;
+}
+
+.ep-charge-type {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 12px;
+  background: rgba(245, 247, 250, 0.06);
+}
+
+.ep-hold,
+.ep-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(0, 184, 255, 0.1);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+#btnBrake {
+  border-color: rgba(255, 159, 67, 0.5);
+  background: rgba(255, 159, 67, 0.1);
+}
+
+.ep-hold[aria-pressed="true"] {
+  color: #04121f;
+  background: linear-gradient(135deg, var(--blue), var(--cyan));
+}
+
+#btnBrake[aria-pressed="true"] {
+  background: linear-gradient(135deg, #ffb86b, var(--orange));
+}
+
+.ep-primary {
+  color: #04121f;
+  border: none;
+  background: linear-gradient(135deg, var(--blue), var(--cyan));
+}
+
+.ep-primary[aria-pressed="true"] {
+  color: var(--text);
+  background: rgba(255, 159, 67, 0.18);
+  border: 1px solid var(--orange);
+}
+
+kbd {
+  padding: 1px 5px;
+  border-radius: 4px;
+  font: 600 10px var(--font);
+  border: 1px solid currentColor;
+  opacity: 0.7;
+}
+
+.ep-session {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.ep-disclaimer {
+  margin: 6px 0 0;
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: rgba(245, 247, 250, 0.45);
+}
+
+@keyframes charging {
+  to {
+    background-position: -200% 0;
+  }
+}
+
 /* ------------------------------------------------------------------ painel educativo */
 
 .component-panel {
@@ -853,6 +1197,21 @@ button {
   .component-panel h3 {
     font-size: 18px;
   }
+  .energy-panel {
+    top: auto;
+    left: 12px;
+    right: 12px;
+    bottom: calc(max(18px, env(safe-area-inset-bottom)) + 76px);
+    width: auto;
+    max-height: 50dvh;
+  }
+  /* Dois painéis no rodapé não cabem: o educativo, quando aberto, fica por cima. */
+  body.cp-open .energy-panel {
+    display: none;
+  }
+  .ep-text {
+    font-size: 12px;
+  }
   .cp-sections dd {
     font-size: 13px;
   }
@@ -870,11 +1229,11 @@ button {
     margin: 0 2px;
   }
   .tool {
-    min-width: 39px;
+    min-width: 35px;
     height: 52px;
     padding: 6px 1px;
-    font-size: 8.5px;
-    letter-spacing: 0;
+    font-size: 8px;
+    letter-spacing: -0.01em;
   }
   .tool svg {
     width: 19px;

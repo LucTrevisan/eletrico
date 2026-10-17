@@ -31,6 +31,7 @@ export function createHud() {
     contextLost: $("contextLost"),
     canvas: $("renderCanvas"),
     xrayButton: $("xrayButton"),
+    energyButton: $("energyButton"),
     tooltip: $("tooltip"),
   };
   const viewButtons = [...document.querySelectorAll("[data-view]")];
@@ -41,6 +42,7 @@ export function createHud() {
   for (const b of viewButtons) b.addEventListener("click", () => handlers.onView?.(b.dataset.view));
   el.turntableButton.addEventListener("click", () => handlers.onToggleTurntable?.());
   el.xrayButton.addEventListener("click", () => handlers.onToggleXRay?.());
+  el.energyButton.addEventListener("click", () => handlers.onToggleEnergy?.());
   el.vrButton.addEventListener("click", () => handlers.onEnterVR?.());
   el.helpButton.addEventListener("click", () => setHelp(el.helpPanel.hidden));
   el.helpClose.addEventListener("click", () => setHelp(false));
@@ -56,6 +58,7 @@ export function createHud() {
       handlers.onToggleTurntable?.();
     } else if (e.key === "h" || e.key === "H") setHelp(el.helpPanel.hidden);
     else if (e.key === "x" || e.key === "X") handlers.onToggleXRay?.();
+    else if (e.key === "e" || e.key === "E") handlers.onToggleEnergy?.();
     else if (e.key === "Escape") {
       setHelp(false);
       handlers.onEscape?.();
@@ -163,6 +166,10 @@ export function createHud() {
 
     setXRay(on) {
       el.xrayButton.setAttribute("aria-pressed", String(on));
+    },
+
+    setEnergy(on) {
+      el.energyButton.setAttribute("aria-pressed", String(on));
     },
 
     /** Dica que acompanha o mouse sobre uma peça. */

@@ -65,6 +65,51 @@
         </dl>
       </aside>
 
+      <section id="energyPanel" class="energy-panel" aria-labelledby="epTitle" hidden>
+        <header>
+          <span class="ep-eyebrow">Fluxo de energia</span>
+          <button id="epClose" class="icon-btn" type="button" aria-label="Fechar fluxo de energia">×</button>
+        </header>
+        <div class="ep-tabs" role="tablist" aria-label="Modos de fluxo de energia">
+          <button role="tab" type="button" data-tab="accel" aria-selected="true">Aceleração</button>
+          <button role="tab" type="button" data-tab="regen" aria-selected="false">Frenagem regenerativa</button>
+          <button role="tab" type="button" data-tab="charge" aria-selected="false">Recarga</button>
+        </div>
+        <h3 id="epTitle"></h3>
+        <p id="epText" class="ep-text"></p>
+        <ol id="epChain" class="ep-chain" aria-label="Caminho da energia"></ol>
+        <ul class="ep-key" aria-label="Cores do fluxo">
+          <li style="--c: #00b8ff">Elétrica CC</li>
+          <li style="--c: #00e5ff">Elétrica CA</li>
+          <li style="--c: #ff9f43">Mecânica</li>
+        </ul>
+        <div class="ep-sim">
+          <h4>Simulação</h4>
+          <div class="ep-stats">
+            <div><span>Velocidade</span><b><output id="simSpeed">0</output> <small>km/h</small></b></div>
+            <div>
+              <span>Bateria (SOC)</span><b><output id="simSoc">0</output> <small>%</small></b>
+              <i class="ep-soc" aria-hidden="true"><i id="simSocBar"></i></i>
+            </div>
+            <div><span>Potência</span><b><output id="simPower">0</output> <small>kW</small></b><em id="simPowerHint"></em></div>
+          </div>
+          <p class="ep-state" aria-live="polite"><span id="simState" data-state="parado">Parado</span> <span id="simNote"></span></p>
+          <div id="epDrive" class="ep-controls">
+            <button id="btnAccel" class="ep-hold" type="button" aria-pressed="false">Acelerar <kbd>W</kbd></button>
+            <button id="btnBrake" class="ep-hold" type="button" aria-pressed="false">Frear <kbd>S</kbd></button>
+          </div>
+          <div id="epCharge" class="ep-controls ep-controls-charge" hidden>
+            <div class="ep-charge-type" role="group" aria-label="Tipo de recarga">
+              <button type="button" data-charge="ac" aria-pressed="true">CA · carregador de bordo</button>
+              <button type="button" data-charge="dc" aria-pressed="false">CC · recarga rápida</button>
+            </div>
+            <button id="btnCharge" class="ep-primary" type="button">Iniciar recarga</button>
+          </div>
+          <p id="epSession" class="ep-session"></p>
+          <p id="epDisclaimer" class="ep-disclaimer"></p>
+        </div>
+      </section>
+
       <div id="tooltip" class="tooltip" aria-hidden="true" hidden></div>
 
       <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -97,6 +142,10 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15v-3l3-4h9l4 4h2v3z" stroke-dasharray="2.2 2" /><rect x="8" y="12" width="7" height="2.6" rx=".6" /><circle cx="7" cy="16" r="2" /><circle cx="17" cy="16" r="2" /></svg>
           <span>Raio X</span>
         </button>
+        <button id="energyButton" class="tool tool-energy" type="button" aria-pressed="false" title="Fluxo de energia e simulação (E)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 5 13h6l-1 9 8-11h-6z" /></svg>
+          <span>Energia</span>
+        </button>
         <button id="turntableButton" class="tool" type="button" aria-pressed="false" title="Girar plataforma (Espaço)">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6" /><path d="M20 4v5h-5" /></svg>
           <span id="turntableLabel">Girar</span>
@@ -120,7 +169,8 @@
           <li><b>Roda do mouse / pinça</b> aproxima e afasta</li>
           <li><b>Clique numa peça</b> para ver o que ela faz</li>
           <li><b>RAIO X</b> mostra bateria, motor, inversor e demais componentes internos</li>
-          <li><b>0–4</b> vistas · <b>X</b> raio X · <b>Espaço</b> gira a plataforma · <b>Esc</b> fecha painéis</li>
+          <li><b>Energia</b> mostra o fluxo na aceleração, na frenagem regenerativa e na recarga, com simulação</li>
+          <li><b>0–4</b> vistas · <b>X</b> raio X · <b>E</b> energia · <b>W / S</b> acelerar / frear · <b>Espaço</b> gira a plataforma · <b>Esc</b> fecha painéis</li>
         </ul>
         <h4>Meta Quest (controles)</h4>
         <ul>
