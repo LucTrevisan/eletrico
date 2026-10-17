@@ -726,6 +726,20 @@ body.energy-open .vehicle-card .dims {
   margin-right: -8px;
 }
 
+.ep-more {
+  display: none;
+  margin-left: auto;
+  margin-right: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--cyan);
+  cursor: pointer;
+}
+
 .ep-eyebrow,
 .ep-sim h4 {
   font-size: 10.5px;
@@ -1208,6 +1222,19 @@ kbd {
   /* Dois painéis no rodapé não cabem: o educativo, quando aberto, fica por cima. */
   body.cp-open .energy-panel {
     display: none;
+  }
+  /* Compacto por padrão: abas, mostradores e controles; textos em "Explicação". */
+  .energy-panel .ep-more {
+    display: inline-block;
+  }
+  .energy-panel:not(.is-expanded) :is(.ep-text, .ep-chain, .ep-key, .ep-session, .ep-disclaimer, .ep-sim h4) {
+    display: none;
+  }
+  .energy-panel:not(.is-expanded) h3 {
+    font-size: 13px;
+  }
+  .energy-panel:not(.is-expanded) .ep-sim {
+    padding-top: 6px;
   }
   .ep-text {
     font-size: 12px;

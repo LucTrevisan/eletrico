@@ -97,6 +97,14 @@ function createDesktopPanel(handlers) {
   };
   el.disclaimer.textContent = SIMULATION_DISCLAIMER;
   $("epClose").addEventListener("click", () => handlers.onClose?.());
+  // No celular o painel abre compacto (para não cobrir o carro); "Explicação" expande os textos.
+  const more = $("epMore");
+  more.addEventListener("click", () => {
+    const open = !el.root.classList.contains("is-expanded");
+    el.root.classList.toggle("is-expanded", open);
+    more.setAttribute("aria-expanded", String(open));
+    more.textContent = open ? "Recolher" : "Explicação";
+  });
   for (const b of el.tabs) b.addEventListener("click", () => handlers.onTab?.(b.dataset.tab));
   for (const b of el.chargeTypes) b.addEventListener("click", () => handlers.onChargeType?.(b.dataset.charge));
   el.chargeButton.addEventListener("click", () => handlers.onChargeToggle?.());
