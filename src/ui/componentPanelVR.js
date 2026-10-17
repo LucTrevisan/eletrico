@@ -5,7 +5,7 @@ import { AdvancedDynamicTexture, Button, Control, Rectangle, StackPanel, TextBlo
 const FONT = "'Segoe UI', Roboto, Arial, sans-serif";
 
 /** Painel educativo holográfico (VR). Carregado sob demanda pelo componentPanel.js. */
-export function createComponentPanelVR(scene, onClose, illustrativeNote) {
+export function createComponentPanelVR(scene, { onClose, onAction, illustrativeNote }) {
   const width = 0.7;
   const height = 0.6;
   const plane = MeshBuilder.CreatePlane("vr-component-panel", { width, height }, scene);
@@ -52,6 +52,34 @@ export function createComponentPanelVR(scene, onClose, illustrativeNote) {
     return { head, body };
   });
 
+  // Botões de ação do componente (ex.: abrir/fechar portas).
+  const actionsRow = new StackPanel("cp-actions");
+  actionsRow.isVertical = false;
+  actionsRow.height = "120px";
+  actionsRow.paddingTop = "20px";
+  actionsRow.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+  stack.addControl(actionsRow);
+  function setActions(actions = []) {
+    for (const c of [...actionsRow.children]) actionsRow.removeControl(c);
+    actionsRow.isVisible = actions.length > 0;
+    for (const a of actions) {
+      const b = Button.CreateSimpleButton(`cp-action-${a.id}`, a.label);
+      b.width = "380px";
+      b.height = "96px";
+      b.paddingRight = "16px";
+      b.cornerRadius = 24;
+      b.thickness = 3;
+      b.color = PALETTE.cyan;
+      b.background = "rgba(0, 184, 255, 0.14)";
+      b.fontFamily = FONT;
+      b.fontSize = 32;
+      b.fontWeight = "600";
+      if (b.textBlock) b.textBlock.color = PALETTE.text;
+      b.onPointerUpObservable.add(() => onAction?.(a.id));
+      actionsRow.addControl(b);
+    }
+  }
+
   const close = Button.CreateSimpleButton("cp-close", "✕");
   close.width = "84px";
   close.height = "84px";
@@ -70,7 +98,9 @@ export function createComponentPanelVR(scene, onClose, illustrativeNote) {
   frame.addControl(close);
 
   return {
-    show(c, illustrative, camera, target) {
+    setActions,
+    show(c, illustrative, camera, target, actions = []) {
+      setActions(actions);
       frame.color = c.color;
       tag.color = c.color;
       tag.text = c.tag.toUpperCase();

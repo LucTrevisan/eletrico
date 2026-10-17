@@ -34,6 +34,10 @@ export async function createXRExperience(scene, { floorMeshes, isBlocker, spawn,
     disableDefaultUI: true,
     teleportationOptions: {
       blockerMeshesPredicate: isBlocker, // não teleporta "através" do carro ou da plataforma
+      // Mãos (sem thumbstick): pinça longa apontando o piso. O atraso inicial evita que uma
+      // pinça rápida de seleção dispare o teleporte.
+      timeToTeleport: 1400,
+      timeToTeleportStart: 250,
       defaultTargetMeshOptions: {
         teleportationFillColor: PALETTE.blue,
         teleportationBorderColor: PALETTE.cyan,

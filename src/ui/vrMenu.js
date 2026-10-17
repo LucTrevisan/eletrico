@@ -9,13 +9,13 @@ const ACTIVE_BG = "rgba(0, 229, 255, 0.32)";
 /**
  * Painel de controle 3D para dentro do headset. O HUD em HTML não aparece em VR,
  * então os mesmos comandos são oferecidos aqui, num painel no espaço (Babylon GUI),
- * acionado pelo raio do controle (gatilho).
+ * acionado pelo raio do controle (gatilho), pela pinça ou pelo toque do dedo (hand tracking).
  * Fica baixo e à direita do ponto de partida, para não cobrir o carro.
  */
-export function createVRMenu(scene, { onToggleXRay, onToggleEnergy, onToggleTurntable, onReturnToSpawn, onExitVR }) {
+export function createVRMenu(scene, { onToggleXRay, onToggleEnergy, onToggleExplode, onToggleTurntable, onReturnToSpawn, onExitVR }) {
   // ~0,64 m a 0,75 m de distância ≈ 45° do campo de visão: legível sem dominar a cena.
   const width = 0.64;
-  const height = 0.36;
+  const height = 0.44;
   const plane = MeshBuilder.CreatePlane("vr-menu", { width, height }, scene);
   plane.setEnabled(false);
 
@@ -49,24 +49,28 @@ export function createVRMenu(scene, { onToggleXRay, onToggleEnergy, onToggleTurn
   status.height = "48px";
   stack.addControl(status);
 
-  const row = new StackPanel("vr-menu-row");
-  row.isVertical = false;
-  row.height = "180px";
-  row.paddingTop = "14px";
-  stack.addControl(row);
+  const makeRow = (name) => {
+    const r = new StackPanel(name);
+    r.isVertical = false;
+    r.height = "142px";
+    r.paddingTop = "12px";
+    stack.addControl(r);
+    return r;
+  };
+  const rows = [makeRow("vr-menu-row-1"), makeRow("vr-menu-row-2")];
 
-  const makeButton = (name, label, accent, onClick) => {
+  const makeButton = (row, name, label, accent, onClick) => {
     const b = Button.CreateSimpleButton(name, label);
-    b.width = "190px";
-    b.height = "150px";
-    b.paddingLeft = "8px";
-    b.paddingRight = "8px";
+    b.width = "310px";
+    b.height = "130px";
+    b.paddingLeft = "10px";
+    b.paddingRight = "10px";
     b.cornerRadius = 26;
     b.thickness = 3;
     b.color = accent;
     b.background = IDLE_BG;
     b.fontFamily = FONT;
-    b.fontSize = 28;
+    b.fontSize = 32;
     b.fontWeight = "600";
     if (b.textBlock) {
       b.textBlock.color = PALETTE.text;
@@ -79,16 +83,20 @@ export function createVRMenu(scene, { onToggleXRay, onToggleEnergy, onToggleTurn
     return b;
   };
 
-  const xrayButton = makeButton("vr-btn-xray", "RAIO X", PALETTE.cyan, () => onToggleXRay?.());
-  const energyButton = makeButton("vr-btn-energy", "Energia", PALETTE.blue, () => onToggleEnergy?.());
-  const turntableButton = makeButton("vr-btn-turntable", "Girar plataforma", PALETTE.cyan, () => onToggleTurntable?.());
-  makeButton("vr-btn-spawn", "Voltar ao início", PALETTE.blue, () => onReturnToSpawn?.());
-  makeButton("vr-btn-exit", "Sair do VR", PALETTE.orange, () => onExitVR?.());
+  const xrayButton = makeButton(rows[0], "vr-btn-xray", "RAIO X", PALETTE.cyan, () => onToggleXRay?.());
+  const energyButton = makeButton(rows[0], "vr-btn-energy", "Energia", PALETTE.blue, () => onToggleEnergy?.());
+  const explodeButton = makeButton(rows[0], "vr-btn-explode", "EXPLODIR", PALETTE.orange, () => onToggleExplode?.());
+  const turntableButton = makeButton(rows[1], "vr-btn-turntable", "Girar plataforma", PALETTE.cyan, () => onToggleTurntable?.());
+  makeButton(rows[1], "vr-btn-spawn", "Voltar ao início", PALETTE.blue, () => onReturnToSpawn?.());
+  makeButton(rows[1], "vr-btn-exit", "Sair do VR", PALETTE.orange, () => onExitVR?.());
 
-  const hint = new TextBlock(
-    "vr-menu-hint",
-    "Thumbstick: para frente = teleporte · para os lados = girar 45°\nGatilho numa peça: informações · B ou Y: trazer este painel",
-  );
+  const HINTS = {
+    controllers:
+      "Thumbstick: para frente = teleporte · para os lados = girar 45°\nGatilho numa peça: informações · B ou Y: trazer este painel",
+    hands:
+      "Mãos: pinça rápida = selecionar · pinça longa no piso = teleporte\nOlhe para o pulso esquerdo e toque em MENU para trazer este painel",
+  };
+  const hint = new TextBlock("vr-menu-hint", HINTS.controllers);
   hint.color = PALETTE.text;
   hint.alpha = 0.6;
   hint.fontFamily = FONT;
@@ -146,6 +154,15 @@ export function createVRMenu(scene, { onToggleXRay, onToggleEnergy, onToggleTurn
       energyButton.metadata = { active: on };
       energyButton.background = on ? ACTIVE_BG : IDLE_BG;
       if (energyButton.textBlock) energyButton.textBlock.text = on ? "Energia: ligado" : "Energia";
+    },
+    setExplodeState(on) {
+      explodeButton.metadata = { active: on };
+      explodeButton.background = on ? ACTIVE_BG : IDLE_BG;
+      if (explodeButton.textBlock) explodeButton.textBlock.text = on ? "MONTAR" : "EXPLODIR";
+    },
+    /** "controllers" | "hands": troca as dicas de uso. */
+    setInputMode(mode) {
+      hint.text = HINTS[mode] ?? HINTS.controllers;
     },
     setTurntableState(on) {
       status.text = on ? "Plataforma girando" : "Plataforma parada";

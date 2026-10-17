@@ -2,11 +2,12 @@ const ILLUSTRATIVE_NOTE = "Representação ilustrativa — este componente não 
 
 /**
  * Painel educativo do componente selecionado: Nome, Função, Como funciona e Importância.
- *  - Desktop/celular: painel HTML lateral (folha inferior no celular), sem cobrir o centro da tela.
+ *  - Desktop/celular: painel HTML lateral (folha inferior retrátil no celular).
  *  - VR: painel holográfico 3D (Babylon GUI), ao lado da linha de visão até o componente.
+ * `actions` (opcional): botões de ação do componente, ex.: [{ id: "doors", label: "Abrir portas" }].
  */
-export function createComponentPanel(scene, { onClose }) {
-  const desktop = createDesktopPanel(onClose);
+export function createComponentPanel(scene, { onClose, onAction }) {
+  const desktop = createDesktopPanel(onClose, onAction);
   let vrPromise = null; // módulo VR (e a GUI do Babylon) só é baixado na primeira seleção em VR
   let vr = null;
   let openId = null;
@@ -15,17 +16,24 @@ export function createComponentPanel(scene, { onClose }) {
     get openId() {
       return openId;
     },
-    showDesktop(id, content, { illustrative = false } = {}) {
+    showDesktop(id, content, { illustrative = false, actions = [] } = {}) {
       openId = id;
       vr?.hide();
-      desktop.show(content, illustrative);
+      desktop.show(content, illustrative, actions);
     },
-    async showVR(id, content, { illustrative = false, camera, target }) {
+    async showVR(id, content, { illustrative = false, actions = [], camera, target }) {
       openId = id;
       desktop.hide();
-      vrPromise ??= import("./componentPanelVR.js").then((m) => (vr = m.createComponentPanelVR(scene, onClose, ILLUSTRATIVE_NOTE)));
+      vrPromise ??= import("./componentPanelVR.js").then(
+        (m) => (vr = m.createComponentPanelVR(scene, { onClose, onAction, illustrativeNote: ILLUSTRATIVE_NOTE })),
+      );
       await vrPromise;
-      if (openId === id) vr.show(content, illustrative, camera, target);
+      if (openId === id) vr.show(content, illustrative, camera, target, actions);
+    },
+    /** Atualiza o texto dos botões de ação sem reabrir o painel (ex.: "Abrir" ↔ "Fechar"). */
+    setActions(actions) {
+      desktop.setActions(actions);
+      vr?.setActions(actions);
     },
     hide() {
       openId = null;
@@ -37,7 +45,7 @@ export function createComponentPanel(scene, { onClose }) {
 
 // ----------------------------------------------------------------------------- desktop
 
-function createDesktopPanel(onClose) {
+function createDesktopPanel(onClose, onAction) {
   const $ = (id) => document.getElementById(id);
   const el = {
     root: $("componentPanel"),
@@ -49,13 +57,28 @@ function createDesktopPanel(onClose) {
     importancia: $("cpImportancia"),
     extraLabel: $("cpExtraLabel"),
     extra: $("cpExtra"),
+    actions: $("cpActions"),
     close: $("cpClose"),
   };
   el.close.addEventListener("click", () => onClose?.());
   el.illustrative.textContent = ILLUSTRATIVE_NOTE;
 
+  function setActions(actions) {
+    el.actions.innerHTML = "";
+    el.actions.hidden = !actions.length;
+    for (const a of actions) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn";
+      b.textContent = a.label;
+      b.addEventListener("click", () => onAction?.(a.id));
+      el.actions.append(b);
+    }
+  }
+
   return {
-    show(c, illustrative) {
+    setActions,
+    show(c, illustrative, actions) {
       el.root.style.setProperty("--accent", c.color);
       el.tag.textContent = c.tag;
       el.title.textContent = c.title;
@@ -68,7 +91,9 @@ function createDesktopPanel(onClose) {
         el.extraLabel.textContent = c.extra.label;
         el.extra.textContent = c.extra.text;
       }
+      setActions(actions);
       el.root.hidden = false;
+      el.root.classList.remove("is-collapsed"); // nova seleção sempre abre expandida
       document.body.classList.add("cp-open");
       // reinicia a animação de entrada
       el.root.classList.remove("is-entering");

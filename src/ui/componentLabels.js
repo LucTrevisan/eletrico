@@ -93,7 +93,52 @@ function layoutLabels(items, roofY, halfLength) {
 
 const avg = (values) => values.reduce((a, b) => a + b, 0) / values.length;
 
-function buildLabel(scene, p, parent) {
+/**
+ * Legendas 3D "flutuantes" (VR) que seguem âncoras móveis — usadas no exploded view.
+ * `items[i].center` é um Vector3 (local do prato) atualizado por quem move as peças;
+ * chame `update()` enquanto houver movimento.
+ */
+export function createFloatingLabels(scene, { items, parent }) {
+  const lift = new Vector3(0, 0.34, 0);
+  const entries = items.map((item) => {
+    const e = buildLabel(scene, { ...item, labelPos: item.center.add(lift) }, parent, { updatable: true });
+    e.plane.isNearPickable = true; // toque com o dedo (hand tracking)
+    return { ...e, center: item.center };
+  });
+  let visibility = 0;
+  const tmp = new Vector3();
+
+  function update() {
+    for (const e of entries) {
+      e.plane.position.copyFrom(e.center).addInPlace(lift);
+      e.dot.position.copyFrom(e.center);
+      const top = e.plane.position.subtract(new Vector3(0, LABEL_H * 0.5, 0));
+      MeshBuilder.CreateLines(e.line.name, { points: [e.center.clone(), top], instance: e.line });
+    }
+  }
+  scene.onBeforeRenderObservable.add(() => {
+    const cam = scene.activeCamera;
+    if (visibility <= 0.001 || !cam) return;
+    for (const e of entries) {
+      e.plane.getAbsolutePosition().subtractToRef(cam.globalPosition, tmp);
+      e.plane.scaling.setAll(Math.min(1.6, Math.max(0.85, tmp.length() / 5)));
+    }
+  });
+
+  function setVisibility(k) {
+    visibility = k;
+    for (const e of entries) {
+      setEnabled(e, k > 0.001);
+      e.plane.material.alpha = k;
+      e.line.alpha = 0.9 * k;
+      e.dot.material.alpha = k;
+    }
+  }
+  setVisibility(0);
+  return { update, setVisibility };
+}
+
+function buildLabel(scene, p, parent, { updatable = false } = {}) {
   const color = Color3.FromHexString(p.color);
 
   const tex = new DynamicTexture(`tex-label-${p.id}`, { width: 592, height: 148 }, scene, true);
@@ -115,9 +160,10 @@ function buildLabel(scene, p, parent) {
   plane.material = mat;
   plane.renderingGroupId = 1;
   plane.metadata = { evxr: { labelFor: p.id } };
+  plane.isNearPickable = true; // toque com o dedo (hand tracking)
 
   const lineTop = p.labelPos.subtract(new Vector3(0, LABEL_H * 0.5, 0));
-  const line = MeshBuilder.CreateLines(`label-line:${p.id}`, { points: [p.center, lineTop] }, scene);
+  const line = MeshBuilder.CreateLines(`label-line:${p.id}`, { points: [p.center.clone(), lineTop], updatable }, scene);
   line.parent = parent;
   line.color = color;
   line.renderingGroupId = 1;

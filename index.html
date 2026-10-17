@@ -27,6 +27,9 @@
         </div>
 
         <div class="hud-top-right">
+          <button id="uiToggle" class="icon-btn icon-btn-glass" type="button" aria-pressed="false" title="Ocultar interface (I)" aria-label="Ocultar interface para ver só o modelo 3D">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg>
+          </button>
           <span id="vrStatus" class="chip" data-state="checking">Verificando VR…</span>
           <button id="vrButton" class="btn btn-vr" type="button" hidden>
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -40,13 +43,19 @@
       </header>
 
       <section id="vehicleCard" class="vehicle-card" aria-label="Veículo em exposição" hidden>
-        <span class="eyebrow">Em exposição</span>
-        <h2 id="vehicleName">—</h2>
-        <span id="vehicleBadge" class="badge"></span>
-        <dl id="vehicleDims" class="dims"></dl>
+        <button id="vehicleToggle" class="vehicle-toggle" type="button" aria-expanded="true" aria-controls="vehicleDetails">
+          <span class="eyebrow">Em exposição</span>
+          <h2 id="vehicleName">—</h2>
+          <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+        </button>
+        <div id="vehicleDetails" class="vehicle-details">
+          <span id="vehicleBadge" class="badge"></span>
+          <dl id="vehicleDims" class="dims"></dl>
+        </div>
       </section>
 
-      <aside id="componentPanel" class="component-panel" role="dialog" aria-labelledby="cpTitle" hidden>
+      <aside id="componentPanel" class="component-panel sheet" role="dialog" aria-labelledby="cpTitle" hidden>
+        <button class="sheet-handle" type="button" aria-label="Recolher ou expandir o painel"><i aria-hidden="true"></i></button>
         <header>
           <span id="cpTag" class="cp-tag"></span>
           <button id="cpClose" class="icon-btn" type="button" aria-label="Fechar painel">×</button>
@@ -63,9 +72,11 @@
           <dt id="cpExtraLabel" hidden></dt>
           <dd id="cpExtra" hidden></dd>
         </dl>
+        <div id="cpActions" class="cp-actions" hidden></div>
       </aside>
 
-      <section id="energyPanel" class="energy-panel" aria-labelledby="epTitle" hidden>
+      <section id="energyPanel" class="energy-panel sheet" aria-labelledby="epTitle" hidden>
+        <button class="sheet-handle" type="button" aria-label="Recolher ou expandir o painel"><i aria-hidden="true"></i></button>
         <header>
           <span class="ep-eyebrow">Fluxo de energia</span>
           <button id="epMore" class="ep-more" type="button" aria-expanded="false" aria-controls="epText">Explicação</button>
@@ -115,8 +126,17 @@
 
       <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
+      <button id="toolbarRestore" class="toolbar-restore" type="button" aria-label="Mostrar a barra de ferramentas" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6" /></svg>
+        Menu
+      </button>
+
       <nav class="toolbar" aria-label="Controles de visualização">
-        <div class="toolbar-group" role="group" aria-label="Vistas da câmera">
+        <button id="viewsToggle" class="tool tool-views" type="button" aria-expanded="false" aria-controls="viewsGroup" title="Vistas da câmera">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg>
+          <span>Vistas</span>
+        </button>
+        <div id="viewsGroup" class="toolbar-group" role="group" aria-label="Vistas da câmera">
           <button class="tool" type="button" data-view="hero" aria-pressed="true" title="Vista inicial (0)">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11 12 4l8 7v9h-5v-6H9v6H4z" /></svg>
             <span>Inicial</span>
@@ -147,6 +167,10 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 5 13h6l-1 9 8-11h-6z" /></svg>
           <span>Energia</span>
         </button>
+        <button id="explodeButton" class="tool tool-explode" type="button" aria-pressed="false" title="Vista explodida (V)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="6" height="6" rx="1" /><path d="M4 4h4M4 4v4M20 4h-4M20 4v4M4 20h4M4 20v-4M20 20h-4M20 20v-4" /></svg>
+          <span id="explodeLabel">Explodir</span>
+        </button>
         <button id="turntableButton" class="tool" type="button" aria-pressed="false" title="Girar plataforma (Espaço)">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6" /><path d="M20 4v5h-5" /></svg>
           <span id="turntableLabel">Girar</span>
@@ -154,6 +178,10 @@
         <button id="helpButton" class="tool" type="button" aria-expanded="false" aria-controls="helpPanel" title="Ajuda (H)">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.7" /><circle cx="12" cy="17" r=".6" /></svg>
           <span>Ajuda</span>
+        </button>
+        <button id="toolbarHide" class="tool tool-retract" type="button" title="Recolher a barra" aria-label="Recolher a barra de ferramentas">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+          <span>Recolher</span>
         </button>
       </nav>
 
@@ -171,7 +199,10 @@
           <li><b>Clique numa peça</b> para ver o que ela faz</li>
           <li><b>RAIO X</b> mostra bateria, motor, inversor e demais componentes internos</li>
           <li><b>Energia</b> mostra o fluxo na aceleração, na frenagem regenerativa e na recarga, com simulação</li>
-          <li><b>0–4</b> vistas · <b>X</b> raio X · <b>E</b> energia · <b>W / S</b> acelerar / frear · <b>Espaço</b> gira a plataforma · <b>Esc</b> fecha painéis</li>
+          <li><b>Explodir</b> separa os conjuntos do carro; <b>Montar</b> restaura</li>
+          <li><b>Duplo clique numa porta</b> (ou <b>P</b>) abre e fecha as portas</li>
+          <li><b>Olho</b> no topo (ou <b>I</b>) oculta a interface para ver só o modelo; painéis recolhem pela alça</li>
+          <li><b>0–4</b> vistas · <b>X</b> raio X · <b>E</b> energia · <b>V</b> explodir · <b>W / S</b> acelerar / frear · <b>Espaço</b> gira a plataforma · <b>Esc</b> fecha painéis</li>
         </ul>
         <h4>Meta Quest (controles)</h4>
         <ul>
@@ -179,6 +210,12 @@
           <li><b>Thumbstick para os lados</b>: giro de 45° · <b>para trás</b>: um passo atrás</li>
           <li><b>Gatilho</b>: seleciona peças e aciona os botões do painel 3D</li>
           <li><b>B ou Y</b>: traz o painel de controle para perto</li>
+        </ul>
+        <h4>Meta Quest (mãos)</h4>
+        <ul>
+          <li><b>Pinça rápida</b> apontando: seleciona · <b>tocar com o indicador</b> em peças internas e legendas</li>
+          <li><b>Pinça longa</b> apontando o piso: teleporte</li>
+          <li><b>Olhe para o pulso esquerdo</b> e toque em <b>MENU</b> para trazer o painel</li>
         </ul>
         <p class="help-note">O botão “Entrar em VR” aparece apenas em navegadores com WebXR (ex.: Meta Quest Browser) acessados por HTTPS.</p>
       </aside>
