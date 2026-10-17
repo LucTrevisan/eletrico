@@ -86,7 +86,7 @@ export function createVRMenu(scene, { onToggleXRay, onToggleTurntable, onReturnT
 
   const hint = new TextBlock(
     "vr-menu-hint",
-    "Thumbstick: para frente = teleporte · para os lados = girar 45°\nBotão B ou Y: trazer este painel para perto",
+    "Thumbstick: para frente = teleporte · para os lados = girar 45°\nGatilho numa peça: informações · B ou Y: trazer este painel",
   );
   hint.color = PALETTE.text;
   hint.alpha = 0.6;
