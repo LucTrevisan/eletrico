@@ -90,9 +90,14 @@ export function createExplodedView(scene, { vehicle, parent, dims, schematics, o
   const ease = new CubicEase();
   ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
 
+  let generation = 0;
   function animate(toExploded) {
     exploded = toExploded;
     running = entries.length;
+    // Reverter no meio do caminho encerra as animações antigas: os retornos delas são ignorados.
+    const gen = ++generation;
+    // Sem as peças internas no GLB, as ilustrativas acompanham a desmontagem (e somem ao remontar).
+    if (toExploded) schematics?.setVisibility(1, "explode");
     const waves = 4;
     for (const e of entries) {
       scene.stopAnimation(e.node, "explode");
@@ -109,8 +114,11 @@ export function createExplodedView(scene, { vehicle, parent, dims, schematics, o
       ]);
       anim.setEasingFunction(ease);
       scene.beginDirectAnimation(e.node, [anim], 0, delay + duration, false, 1, () => {
+        if (gen !== generation) return;
         running = Math.max(0, running - 1);
-        if (!running) onProgress?.(exploded, true);
+        if (running) return;
+        if (!exploded) schematics?.setVisibility(0, "explode");
+        onProgress?.(exploded, true);
       });
     }
     onProgress?.(exploded, false);

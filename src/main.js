@@ -734,6 +734,13 @@ async function boot() {
       else xray?.set(on);
       return xray?.on;
     },
+    /** Liga/desliga a vista explodida (sem argumento: alterna). */
+    explodir(on = !explode?.exploded) {
+      setExploded(on);
+      return explode?.exploded;
+    },
+    /** Abre/fecha todas as portas. */
+    portas: () => toggleAllDoors(),
     /** Seleciona um componente pelo id (ex.: "bateria", "motor", "inversor"). */
     /** Liga/desliga o fluxo de energia; `aba`: "accel" | "regen" | "charge". */
     energia(on = !energy.on, aba) {

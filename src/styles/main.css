@@ -1160,6 +1160,182 @@ kbd {
   }
 }
 
+/* ------------------------------------------------------------------ Etapa 4: interface retrátil */
+
+.icon-btn-glass {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid rgba(245, 247, 250, 0.14);
+  background: var(--glass);
+  backdrop-filter: blur(10px);
+}
+
+.icon-btn-glass svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+}
+
+.icon-btn-glass[aria-pressed="true"] {
+  color: var(--cyan);
+  border-color: var(--line);
+}
+
+/* Interface oculta: só o modelo 3D, o olho e o botão de VR. */
+body.ui-hidden :is(.vehicle-card, .toolbar, .toolbar-restore, .callouts, .component-panel, .energy-panel, .hint, .tooltip, .help-panel, .brand-text) {
+  display: none !important;
+}
+
+/* Cartão do veículo recolhível */
+.vehicle-toggle {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vehicle-toggle .eyebrow {
+  grid-column: 1;
+}
+
+.vehicle-toggle h2 {
+  grid-column: 1;
+}
+
+.vehicle-toggle .chevron {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 2;
+  transition: transform 0.2s ease;
+}
+
+.vehicle-card.is-collapsed .chevron {
+  transform: rotate(-90deg);
+}
+
+.vehicle-card.is-collapsed .vehicle-details {
+  display: none;
+}
+
+.vehicle-card.is-collapsed h2 {
+  margin-bottom: 0;
+}
+
+.credit {
+  margin: 10px 0 0;
+  font-size: 10px;
+  line-height: 1.4;
+  color: rgba(245, 247, 250, 0.45);
+}
+
+/* Botões só do celular */
+.tool-views,
+.tool-retract {
+  display: none;
+}
+
+.tool-explode[aria-pressed="true"] {
+  color: #04121f;
+  background: linear-gradient(135deg, #ffb86b, var(--orange));
+  border-color: transparent;
+}
+
+.toolbar-restore {
+  position: absolute;
+  left: 50%;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--glass-strong);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.toolbar-restore svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
+body.toolbar-hidden .toolbar {
+  display: none;
+}
+
+/* Folhas retráteis: alça no topo; recolhidas mostram só o cabeçalho e o título. */
+.sheet-handle {
+  display: block;
+  width: 100%;
+  height: 16px;
+  margin: -6px 0 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: grab;
+  touch-action: none;
+}
+
+.sheet-handle i {
+  display: block;
+  width: 42px;
+  height: 4px;
+  margin: 0 auto;
+  border-radius: 4px;
+  background: rgba(245, 247, 250, 0.3);
+}
+
+.sheet-handle:hover i {
+  background: var(--cyan);
+}
+
+.sheet.is-collapsed > :not(header):not(.sheet-handle):not(h3) {
+  display: none !important;
+}
+
+.sheet.is-collapsed h3 {
+  margin-bottom: 0;
+}
+
+.cp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.cp-sections .cp-model {
+  color: var(--cyan);
+}
+
+.cp-sections dd.cp-model {
+  color: rgba(245, 247, 250, 0.9);
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(0, 229, 255, 0.07);
+  border-left: 2px solid var(--cyan);
+}
+
 /* ------------------------------------------------------------------ responsivo */
 
 @media (max-width: 720px) {
@@ -1244,6 +1420,40 @@ kbd {
   }
 }
 
+/* Celular: vistas num menu compacto (botão "Vistas") e barra recolhível ("Recolher"). */
+@media (max-width: 720px) {
+  .tool-views,
+  .tool-retract {
+    display: flex;
+  }
+  .toolbar {
+    overflow: visible;
+  }
+  .toolbar-group {
+    display: none;
+  }
+  .toolbar.views-open .toolbar-group {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 8px);
+    transform: translateX(-50%);
+    display: flex;
+    padding: 6px;
+    border-radius: 16px;
+    background: var(--glass-strong);
+    border: 1px solid var(--line);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    animation: rise 0.2s ease;
+  }
+  .toolbar.views-open .tool-views {
+    color: var(--cyan);
+    background: rgba(0, 229, 255, 0.12);
+  }
+  .toolbar-divider {
+    display: none;
+  }
+}
+
 @media (max-width: 420px) {
   .toolbar,
   .toolbar-group {
@@ -1252,19 +1462,16 @@ kbd {
   .toolbar {
     padding: 5px;
   }
-  .toolbar-divider {
-    margin: 0 2px;
-  }
   .tool {
-    min-width: 35px;
+    min-width: 44px;
     height: 52px;
-    padding: 6px 1px;
-    font-size: 8px;
-    letter-spacing: -0.01em;
+    padding: 6px 2px;
+    font-size: 9px;
+    letter-spacing: 0;
   }
   .tool svg {
-    width: 19px;
-    height: 19px;
+    width: 20px;
+    height: 20px;
   }
 }
 

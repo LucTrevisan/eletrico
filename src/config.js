@@ -47,6 +47,7 @@ export const VEHICLE_MODELS = [
     id: "toyota-bz4x",
     url: "models/toyota-bz4x.glb",
     label: "Toyota bZ4X",
+    badge: "100% elétrico · AWD",
     provisional: false,
     credit: "Modelo 3D: “Toyota bZ4X” por KOElkast1007 (Sketchfab, licença Sketchfab Standard)",
     rotationDeg: { x: 0, y: 0, z: 0 },

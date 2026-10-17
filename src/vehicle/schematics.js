@@ -117,13 +117,20 @@ export function createSchematics(scene, { parent, dims, axles, missing, drivetra
     };
   }
 
+  // Raio X e vista explodida exibem as peças de forma independente: vale o maior dos dois.
+  const levels = { xray: 0, explode: 0 };
+  let shown = -1;
   return {
     items,
     meshes,
-    setVisibility(k) {
+    setVisibility(k, source = "xray") {
+      levels[source] = k;
+      const v = Math.max(levels.xray, levels.explode);
+      if (v === shown) return;
+      shown = v;
       for (const m of meshes) {
-        m.setEnabled(k > 0.001);
-        m.material.alpha = 0.85 * k;
+        m.setEnabled(v > 0.001);
+        m.material.alpha = 0.85 * v;
       }
     },
   };

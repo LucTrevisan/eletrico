@@ -145,7 +145,12 @@ export function orientVehicle(vehicle, rotationDeg, { autoFront = false } = {}) 
     height: box.size.y,
     lengthAxis: box.size.z >= box.size.x ? "z" : "x",
   };
-  vehicle.info = { label: vehicle.model.label, provisional: vehicle.model.provisional, dims: vehicle.dims };
+  vehicle.info = {
+    label: vehicle.model.label,
+    provisional: vehicle.model.provisional,
+    badge: vehicle.model.badge,
+    dims: vehicle.dims,
+  };
 
   parent.rotation.y = savedSpin;
   parent.computeWorldMatrix(true);

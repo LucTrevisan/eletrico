@@ -32,17 +32,95 @@ export function createHud() {
     canvas: $("renderCanvas"),
     xrayButton: $("xrayButton"),
     energyButton: $("energyButton"),
+    explodeButton: $("explodeButton"),
+    explodeLabel: $("explodeLabel"),
     tooltip: $("tooltip"),
+    uiToggle: $("uiToggle"),
+    vehicleToggle: $("vehicleToggle"),
+    vehicleCredit: $("vehicleCredit"),
+    viewsToggle: $("viewsToggle"),
+    toolbar: document.querySelector(".toolbar"),
+    toolbarHide: $("toolbarHide"),
+    toolbarRestore: $("toolbarRestore"),
+    componentPanel: $("componentPanel"),
+    energyPanel: $("energyPanel"),
   };
   const viewButtons = [...document.querySelectorAll("[data-view]")];
+  const isNarrow = () => window.matchMedia("(max-width: 720px)").matches;
   let handlers = {};
   let toastTimer = null;
 
   // ------------------------------------------------------------ eventos
-  for (const b of viewButtons) b.addEventListener("click", () => handlers.onView?.(b.dataset.view));
+  for (const b of viewButtons)
+    b.addEventListener("click", () => {
+      handlers.onView?.(b.dataset.view);
+      setViewsOpen(false); // no celular, o menu de vistas fecha após a escolha
+    });
   el.turntableButton.addEventListener("click", () => handlers.onToggleTurntable?.());
   el.xrayButton.addEventListener("click", () => handlers.onToggleXRay?.());
   el.energyButton.addEventListener("click", () => handlers.onToggleEnergy?.());
+  el.explodeButton.addEventListener("click", () => handlers.onToggleExplode?.());
+
+  // ------------------------------------------------------------ interface retrátil
+  // Ocultar tudo (olho): só o modelo 3D, o botão do olho e o de VR continuam na tela.
+  let uiHidden = false;
+  function setUiHidden(hidden) {
+    uiHidden = hidden;
+    document.body.classList.toggle("ui-hidden", hidden);
+    el.uiToggle.setAttribute("aria-pressed", String(hidden));
+    el.uiToggle.title = hidden ? "Mostrar interface (I)" : "Ocultar interface (I)";
+  }
+  el.uiToggle.addEventListener("click", () => setUiHidden(!uiHidden));
+
+  // Cartão do veículo: recolhe para mostrar só o nome (recolhido por padrão no celular).
+  const setCardCollapsed = (collapsed) => {
+    el.vehicleCard.classList.toggle("is-collapsed", collapsed);
+    el.vehicleToggle.setAttribute("aria-expanded", String(!collapsed));
+  };
+  el.vehicleToggle.addEventListener("click", () => setCardCollapsed(!el.vehicleCard.classList.contains("is-collapsed")));
+  if (isNarrow()) setCardCollapsed(true);
+
+  // Celular: vistas num menu compacto e barra de ferramentas recolhível.
+  function setViewsOpen(open) {
+    el.toolbar.classList.toggle("views-open", open);
+    el.viewsToggle.setAttribute("aria-expanded", String(open));
+  }
+  el.viewsToggle.addEventListener("click", () => setViewsOpen(!el.toolbar.classList.contains("views-open")));
+  const setToolbarHidden = (hidden) => {
+    document.body.classList.toggle("toolbar-hidden", hidden);
+    el.toolbarRestore.hidden = !hidden;
+    setViewsOpen(false);
+  };
+  el.toolbarHide.addEventListener("click", () => setToolbarHidden(true));
+  el.toolbarRestore.addEventListener("click", () => setToolbarHidden(false));
+
+  // Folhas (painel educativo e de energia): alça recolhe/expande; arrastar para baixo/cima também.
+  for (const sheet of [el.componentPanel, el.energyPanel]) {
+    const handle = sheet.querySelector(".sheet-handle");
+    const toggle = (collapsed = !sheet.classList.contains("is-collapsed")) => {
+      sheet.classList.toggle("is-collapsed", collapsed);
+      handle.setAttribute("aria-expanded", String(!collapsed));
+    };
+    let startY = null;
+    let dragged = false;
+    handle.addEventListener("click", () => {
+      if (dragged) dragged = false; // o gesto de arrastar já decidiu
+      else toggle();
+    });
+    handle.addEventListener("pointerdown", (e) => {
+      startY = e.clientY;
+      dragged = false;
+    });
+    window.addEventListener("pointerup", (e) => {
+      if (startY === null) return;
+      const dy = e.clientY - startY;
+      startY = null;
+      if (Math.abs(dy) > 36) {
+        dragged = true;
+        toggle(dy > 0);
+      }
+    });
+  }
   el.vrButton.addEventListener("click", () => handlers.onEnterVR?.());
   el.helpButton.addEventListener("click", () => setHelp(el.helpPanel.hidden));
   el.helpClose.addEventListener("click", () => setHelp(false));
@@ -59,6 +137,9 @@ export function createHud() {
     } else if (e.key === "h" || e.key === "H") setHelp(el.helpPanel.hidden);
     else if (e.key === "x" || e.key === "X") handlers.onToggleXRay?.();
     else if (e.key === "e" || e.key === "E") handlers.onToggleEnergy?.();
+    else if (e.key === "v" || e.key === "V") handlers.onToggleExplode?.();
+    else if (e.key === "p" || e.key === "P") handlers.onToggleDoors?.();
+    else if (e.key === "i" || e.key === "I") setUiHidden(!uiHidden);
     else if (e.key === "Escape") {
       setHelp(false);
       handlers.onEscape?.();
@@ -141,7 +222,7 @@ export function createHud() {
       if (!info) return;
       el.vehicleCard.hidden = false;
       el.vehicleName.textContent = info.label;
-      el.vehicleBadge.textContent = info.provisional ? "Modelo provisório" : "Modelo definitivo";
+      el.vehicleBadge.textContent = info.badge ?? (info.provisional ? "Modelo provisório" : "Modelo 3D");
       el.vehicleBadge.dataset.kind = info.provisional ? "provisional" : "final";
       const fmt = (v) => `${v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m`;
       el.vehicleDims.innerHTML = "";
@@ -166,6 +247,35 @@ export function createHud() {
 
     setXRay(on) {
       el.xrayButton.setAttribute("aria-pressed", String(on));
+    },
+
+    setExplode(on) {
+      el.explodeButton.setAttribute("aria-pressed", String(on));
+      el.explodeLabel.textContent = on ? "Montar" : "Explodir";
+    },
+
+    setCredit(text) {
+      el.vehicleCredit.textContent = text ?? "";
+      el.vehicleCredit.hidden = !text;
+    },
+
+    /**
+     * Área da tela ocupada pelos painéis (px), para a câmera centralizar o carro no espaço livre.
+     * Desktop: painéis laterais. Celular: folhas inferiores.
+     */
+    getInsets() {
+      const insets = { left: 0, right: 0, bottom: 0 };
+      if (uiHidden) return insets;
+      const visible = (n) => n && !n.hidden && n.offsetParent !== null;
+      if (isNarrow()) {
+        for (const sheet of [el.componentPanel, el.energyPanel]) {
+          if (visible(sheet)) insets.bottom = Math.max(insets.bottom, window.innerHeight - sheet.getBoundingClientRect().top);
+        }
+      } else {
+        if (visible(el.energyPanel)) insets.left = el.energyPanel.getBoundingClientRect().right + 8;
+        if (visible(el.componentPanel)) insets.right = window.innerWidth - el.componentPanel.getBoundingClientRect().left + 8;
+      }
+      return insets;
     },
 
     setEnergy(on) {

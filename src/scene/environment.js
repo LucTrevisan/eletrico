@@ -391,7 +391,7 @@ function drawPlaque(tex, info) {
   ctx.fillText(info?.label ?? "Carregando…", 56, 196);
 
   if (info) {
-    const pill = info.provisional ? "MODELO PROVISÓRIO" : "MODELO DEFINITIVO";
+    const pill = (info.badge ?? (info.provisional ? "Modelo provisório" : "Modelo 3D")).toUpperCase();
     const color = info.provisional ? PALETTE.orange : PALETTE.cyan;
     ctx.font = `700 26px ${FONT}`;
     setSpacing(ctx, "3px");
