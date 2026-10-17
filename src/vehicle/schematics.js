@@ -1,4 +1,4 @@
-import { Color3, DynamicTexture, MeshBuilder, StandardMaterial, Texture, Vector3 } from "@babylonjs/core";
+import { Color3, DynamicTexture, MeshBuilder, StandardMaterial, Texture, Vector3 } from "../babylon.js";
 import { getContent } from "./componentContent.js";
 
 /**

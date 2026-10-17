@@ -15,7 +15,7 @@
  *   D)  WebXR (somente se houver suporte)
  */
 import "./styles/main.css";
-import { SceneInstrumentation, TransformNode, Vector3 } from "@babylonjs/core";
+import { SceneInstrumentation, TransformNode, Vector3 } from "./babylon.js";
 import { SHOWROOM, SIMULATION, URL_PARAMS, VEHICLE, VEHICLE_MODELS } from "./config.js";
 import { applyResolution, createCamera, createEngine, createScene, createViewController } from "./scene/createScene.js";
 import { createShowroom } from "./scene/environment.js";
@@ -40,7 +40,6 @@ import { createComponentPanel } from "./ui/componentPanel.js";
 import { checkVRSupport, createXRExperience } from "./xr/xrExperience.js";
 import { setupXRInteractions } from "./xr/interactions.js";
 import { createHud } from "./ui/hud.js";
-import { createVRMenu } from "./ui/vrMenu.js";
 import { createEnergyPanel } from "./ui/energyPanel.js";
 import { createEnergyFlow } from "./simulation/energyFlow.js";
 import { ENERGY_MODES } from "./simulation/energyContent.js";
@@ -489,8 +488,10 @@ async function boot() {
     if (spinBeforeXR && !showroom.turntable.spinning) setTurntable(true);
   }
 
+  /** O painel de controle VR (e a GUI do Babylon) só é baixado em dispositivos com VR. */
+  let vrMenuPromise = null;
   function ensureVRMenu() {
-    if (!vrMenu) {
+    vrMenuPromise ??= import("./ui/vrMenu.js").then(({ createVRMenu }) => {
       vrMenu = createVRMenu(scene, {
         onToggleXRay: toggleXRay,
         onToggleEnergy: () => setEnergy(!energy.on),
@@ -501,8 +502,9 @@ async function boot() {
       vrMenu.setTurntableState(showroom.turntable.spinning);
       vrMenu.setXRayState(!!xray?.on);
       vrMenu.setEnergyState(energy.on);
-    }
-    return vrMenu;
+      return vrMenu;
+    });
+    return vrMenuPromise;
   }
 
   const support = await checkVRSupport();
@@ -510,7 +512,7 @@ async function boot() {
     hud.setVR("unavailable", support.reason);
   } else {
     try {
-      ensureVRMenu();
+      await ensureVRMenu();
       xrApi = await createXRExperience(scene, {
         floorMeshes: showroom.teleportFloors,
         isBlocker: (mesh) => !!mesh.metadata?.evxr?.vehicle || showroom.isTeleportBlocker(mesh),
@@ -567,8 +569,8 @@ async function boot() {
       selectComponent(id);
     },
     /** Simula no desktop a chegada em VR: olhos a 1,6 m no ponto de partida, painel e placa visíveis. */
-    previewVR(on = true) {
-      const menu = ensureVRMenu();
+    async previewVR(on = true) {
+      const menu = await ensureVRMenu();
       showroom.plaque.root.setEnabled(on);
       if (!on) {
         menu.hide();

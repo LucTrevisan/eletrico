@@ -1,4 +1,4 @@
-import { Color3, Material } from "@babylonjs/core";
+import { Color3, Material } from "../babylon.js";
 
 /**
  * Estados visuais por malha do veículo (raio X, destaque, seleção, hover).

@@ -1,4 +1,4 @@
-import { Matrix, Vector3 } from "@babylonjs/core";
+import { Matrix, Vector3 } from "../babylon.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 

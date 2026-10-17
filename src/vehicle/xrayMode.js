@@ -1,4 +1,4 @@
-import { Color3 } from "@babylonjs/core";
+import { Color3 } from "../babylon.js";
 import { PALETTE } from "../config.js";
 import { easeInOutCubic, tween } from "../scene/presentation.js";
 

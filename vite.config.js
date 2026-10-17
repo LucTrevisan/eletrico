@@ -12,12 +12,9 @@ export default defineConfig(({ mode }) => ({
   build: {
     outDir: "dist",
     target: "es2022",
-    chunkSizeWarningLimit: 6000,
-    rollupOptions: {
-      output: {
-        // Babylon em um chunk separado: o navegador mantém em cache entre atualizações do app.
-        manualChunks: (id) => (id.includes("node_modules/@babylonjs") ? "babylon" : undefined),
-      },
-    },
+    // O Babylon é importado por caminhos específicos (src/babylon.js) e os módulos de VR,
+    // o leitor glTF e suas extensões são carregados sob demanda — sem chunk manual aqui,
+    // senão o código sob demanda voltaria para o pacote inicial.
+    chunkSizeWarningLimit: 2500,
   },
 }));

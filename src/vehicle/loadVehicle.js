@@ -1,5 +1,4 @@
-import { ImportMeshAsync, Tools, TransformNode, Vector3 } from "@babylonjs/core";
-import "@babylonjs/loaders/glTF";
+import { ImportMeshAsync, Tools, TransformNode, Vector3 } from "../babylon.js";
 import { URL_PARAMS, VEHICLE } from "../config.js";
 
 /**

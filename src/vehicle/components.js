@@ -1,4 +1,4 @@
-import { Mesh, TransformNode, Vector3 } from "@babylonjs/core";
+import { Mesh, TransformNode, Vector3 } from "../babylon.js";
 
 /**
  * Catálogo de componentes do veículo e regras para reconhecê-los pelos nomes

@@ -1,4 +1,4 @@
-import { Color3, Quaternion, Tools, WebXRState } from "@babylonjs/core";
+import { Color3, Quaternion, Tools, WebXRDefaultExperience, WebXRState } from "../babylon.js";
 import { PALETTE, XR } from "../config.js";
 
 /**
@@ -29,7 +29,7 @@ export async function checkVRSupport() {
  * A interface padrão do Babylon é desativada; o botão "Entrar em VR" é o do HUD.
  */
 export async function createXRExperience(scene, { floorMeshes, isBlocker, spawn, lookAt, onEnter, onExit }) {
-  const xr = await scene.createDefaultXRExperienceAsync({
+  const xr = await WebXRDefaultExperience.CreateAsync(scene, {
     floorMeshes,
     disableDefaultUI: true,
     teleportationOptions: {

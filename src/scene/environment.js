@@ -13,7 +13,7 @@ import {
   Tools,
   TransformNode,
   Vector3,
-} from "@babylonjs/core";
+} from "../babylon.js";
 import { APP, INSTITUTION, PALETTE, SHOWROOM, XR } from "../config.js";
 import { easeInOutCubic, tween } from "./presentation.js";
 

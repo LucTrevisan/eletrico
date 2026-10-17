@@ -7,7 +7,7 @@ import {
   ImageProcessingConfiguration,
   Scene,
   Vector3,
-} from "@babylonjs/core";
+} from "../babylon.js";
 import { PALETTE, SHOWROOM } from "../config.js";
 import { easeInOutCubic, tween } from "./presentation.js";
 

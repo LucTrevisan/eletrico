@@ -1,4 +1,4 @@
-import { Color3, DirectionalLight, HemisphericLight, ShadowGenerator, Vector3 } from "@babylonjs/core";
+import { Color3, DirectionalLight, HemisphericLight, ShadowGenerator, Vector3 } from "../babylon.js";
 import { PALETTE, SHOWROOM } from "../config.js";
 
 /**

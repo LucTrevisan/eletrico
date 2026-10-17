@@ -1,4 +1,4 @@
-import { Color3, PointerEventTypes } from "@babylonjs/core";
+import { Color3, PointerEventTypes } from "../babylon.js";
 import { PALETTE } from "../config.js";
 import { isSelectableComponent } from "./components.js";
 import { getContent } from "./componentContent.js";

@@ -1,4 +1,4 @@
-import { Color3, DynamicTexture, Mesh, MeshBuilder, StandardMaterial, Vector3 } from "@babylonjs/core";
+import { Color3, DynamicTexture, Mesh, MeshBuilder, StandardMaterial, Vector3 } from "../babylon.js";
 import { PALETTE } from "../config.js";
 
 const FONT = "'Segoe UI', Roboto, Arial, sans-serif";

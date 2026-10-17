@@ -1,5 +1,5 @@
-import { MeshBuilder, Vector3 } from "@babylonjs/core";
-import { AdvancedDynamicTexture, Button, Control, Rectangle, StackPanel, TextBlock } from "@babylonjs/gui";
+import { MeshBuilder, Vector3 } from "../babylon.js";
+import { AdvancedDynamicTexture, Button, Control, Rectangle, StackPanel, TextBlock } from "./gui.js";
 import { APP, PALETTE } from "../config.js";
 
 const FONT = "'Segoe UI', Roboto, Arial, sans-serif";

@@ -9,7 +9,8 @@
     "dev:https": "vite --mode https",
     "build": "vite build",
     "preview": "vite preview",
-    "preview:https": "vite preview --mode https"
+    "preview:https": "vite preview --mode https",
+    "otimizar-modelo": "node scripts/otimizar-modelo.mjs"
   },
   "dependencies": {
     "@babylonjs/core": "9.28.0",
@@ -17,7 +18,11 @@
     "@babylonjs/loaders": "9.28.0"
   },
   "devDependencies": {
+    "@gltf-transform/core": "4.5.1",
+    "@gltf-transform/extensions": "4.5.1",
+    "@gltf-transform/functions": "4.5.1",
     "@vitejs/plugin-basic-ssl": "2.3.0",
+    "meshoptimizer": "1.3.0",
     "vite": "8.3.1"
   }
 }

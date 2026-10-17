@@ -11,7 +11,7 @@ import {
   StandardMaterial,
   TransformNode,
   Vector3,
-} from "@babylonjs/core";
+} from "../babylon.js";
 import { PALETTE } from "../config.js";
 
 /**
