@@ -166,6 +166,8 @@ export function createVRMenu(scene, { onToggleXRay, onToggleEnergy, onToggleExpl
     },
     setTurntableState(on) {
       status.text = on ? "Plataforma girando" : "Plataforma parada";
+      turntableButton.metadata = { active: on };
+      turntableButton.background = on ? ACTIVE_BG : IDLE_BG;
       if (turntableButton.textBlock) turntableButton.textBlock.text = on ? "Parar plataforma" : "Girar plataforma";
     },
   };

@@ -68,7 +68,7 @@ export function classifyMesh(mesh, stopAt, extra = {}) {
  * Raio X, exploded view e seleção (próximas etapas) operam sobre essa estrutura,
  * independentemente de as malhas terem sido unidas ou não.
  */
-export function organizeVehicle(vehicle, { mergeStrategy = "assembly", keepSeparate = [] } = {}) {
+export function organizeVehicle(vehicle, { mergeStrategy = "assembly", keepSeparate = [], mergeAcross = [] } = {}) {
   const { container, gltfRoot } = vehicle;
   const scene = container.getScene();
   const level = findAssemblyLevel(gltfRoot);
@@ -79,6 +79,21 @@ export function organizeVehicle(vehicle, { mergeStrategy = "assembly", keepSepar
     const assembly = mergeStrategy === "component" ? component : assemblyOf(mesh, level).name;
     return { mesh, component, assembly, name: mesh.name };
   });
+
+  // Componentes que se movem em bloco (mesma regra na vista explodida, sem pivô próprio) são unidos
+  // também entre conjuntos — só quando o conjunto não tem nada que se mova sozinho (porta, roda…).
+  if (mergeStrategy === "assembly" && mergeAcross.length) {
+    const across = new Set(mergeAcross);
+    const kinds = new Map();
+    for (const e of entries) {
+      if (!kinds.has(e.assembly)) kinds.set(e.assembly, new Set());
+      kinds.get(e.assembly).add(e.component);
+    }
+    for (const e of entries) {
+      const pure = [...kinds.get(e.assembly)].every((c) => across.has(c));
+      if (pure && canMerge(e.mesh, mergeStrategy, keepSeparate)) e.assembly = `bloco:${e.component}`;
+    }
+  }
 
   const byAssembly = new Map();
   for (const e of entries) {

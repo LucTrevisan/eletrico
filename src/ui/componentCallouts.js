@@ -9,8 +9,10 @@ const SVG_NS = "http://www.w3.org/2000/svg";
  * (acessíveis por teclado). Em VR usam-se as legendas 3D (ui/componentLabels.js).
  *
  * items: [{ id, short, color, illustrative, center (local do prato) }]
+ * onDemand(): quando devolve true (celular), só aparece a legenda do componente tocado — nenhuma
+ * enquanto nada estiver selecionado (tela pequena demais para todas de uma vez).
  */
-export function createComponentCallouts(scene, { items, parent, carBounds, onSelect }) {
+export function createComponentCallouts(scene, { items, parent, carBounds, onSelect, onDemand }) {
   const hud = document.getElementById("hud");
   const canvas = scene.getEngine().getRenderingCanvas();
 
@@ -115,8 +117,22 @@ export function createComponentCallouts(scene, { items, parent, carBounds, onSel
     }
   }
 
+  let allHidden = false;
   scene.onAfterRenderObservable.add(() => {
     if (visibility <= 0.001 || !scene.activeCamera) return;
+    const demand = !!onDemand?.();
+    if (demand && !activeId) {
+      // Sob demanda e nada selecionado: esconde tudo uma vez e não calcula nada por quadro.
+      if (!allHidden) {
+        for (const e of entries) {
+          e.button.hidden = true;
+          e.line.style.display = e.dot.style.display = "none";
+        }
+        allHidden = true;
+      }
+      return;
+    }
+    allHidden = false;
     const box = { minX: Infinity, maxX: -Infinity };
     const p = { x: 0, y: 0, z: 0 };
     for (const c of corners) {
@@ -128,10 +144,22 @@ export function createComponentCallouts(scene, { items, parent, carBounds, onSel
     // da traseira para o outro (linhas curtas e sem cruzamentos), em qualquer ângulo.
     const centerX = project(carCenter, p).x;
     const header = document.querySelector(".hud-top")?.getBoundingClientRect();
-    const toolbar = document.querySelector(".toolbar")?.getBoundingClientRect();
+    // Barra recolhida (retângulo zerado): o limite inferior passa a ser o botão "Menu".
+    const shown = (r) => (r && r.height > 0 ? r : null);
+    const toolbar =
+      shown(document.querySelector(".toolbar")?.getBoundingClientRect()) ?? shown(rectOf("toolbarRestore"));
+    // Celular: painéis viram gavetas inferiores; com um componente aberto, só a legenda dele fica.
+    const narrow = canvas.clientWidth < 720;
+    // Com um componente aberto e pouca área livre (celular, tablet em pé), só a legenda dele fica.
+    const panelLeft = rectOf("componentPanel")?.left ?? canvas.clientWidth;
+    const freeWidth = panelLeft - (rectOf("energyPanel")?.right ?? 0);
+    const compact = !!activeId && (demand || narrow || canvas.clientHeight < 520 || freeWidth < 560);
+    const sheetTop = narrow
+      ? [rectOf("componentPanel"), rectOf("energyPanel")].filter(Boolean).reduce((t, r) => Math.min(t, r.top), Infinity)
+      : Infinity;
     const limits = {
       top: (header?.bottom ?? 60) + 12,
-      bottom: (toolbar?.top ?? canvas.clientHeight) - 12,
+      bottom: Math.min(toolbar?.top ?? canvas.clientHeight, sheetTop) - 12,
       leftObstacles: [rectOf("vehicleCard"), rectOf("energyPanel")].filter(Boolean),
       rightObstacles: [rectOf("componentPanel"), rectOf("helpPanel")].filter(Boolean),
     };
@@ -140,7 +168,7 @@ export function createComponentCallouts(scene, { items, parent, carBounds, onSel
     const right = [];
     for (const e of entries) {
       project(e.center, e.screen);
-      e.visible = e.screen.z > 0 && e.screen.z < 1 && (!filter || filter.has(e.id));
+      e.visible = e.screen.z > 0 && e.screen.z < 1 && (!filter || filter.has(e.id)) && (!compact || e.id === activeId);
       if (!e.visible) continue;
       (e.screen.x < centerX ? left : right).push(e);
     }

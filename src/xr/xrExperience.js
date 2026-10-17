@@ -1,24 +1,10 @@
-import { Color3, Quaternion, Tools, WebXRDefaultExperience, WebXRState } from "../babylon.js";
+// Carregado sob demanda (main.js), só quando o navegador informa suporte a VR: o código do WebXR
+// (teleporte, controles, mãos) não pesa na abertura em PCs e celulares sem headset.
+import { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience.js";
+import { WebXRState } from "@babylonjs/core/XR/webXRTypes.js";
+import { UtilityLayerRenderer } from "@babylonjs/core/Rendering/utilityLayerRenderer.js";
+import { Color3, MeshBuilder, Quaternion, StandardMaterial, Tools } from "../babylon.js";
 import { PALETTE, XR } from "../config.js";
-
-/**
- * Verifica se há suporte a VR imersivo. O botão "Entrar em VR" só aparece se `supported`.
- * Nunca lança exceção: devolve um motivo legível para exibir na interface.
- */
-export async function checkVRSupport() {
-  if (!window.isSecureContext) {
-    return { supported: false, reason: "WebXR exige HTTPS (ou localhost)." };
-  }
-  if (!("xr" in navigator)) {
-    return { supported: false, reason: "Este navegador não oferece WebXR." };
-  }
-  try {
-    const ok = await navigator.xr.isSessionSupported("immersive-vr");
-    return ok ? { supported: true } : { supported: false, reason: "Nenhum headset de VR disponível neste dispositivo." };
-  } catch (err) {
-    return { supported: false, reason: `WebXR indisponível: ${err?.message || err}` };
-  }
-}
 
 /**
  * Cria a experiência VR com o WebXR Experience Helper do Babylon:
@@ -44,6 +30,18 @@ export async function createXRExperience(scene, { floorMeshes, isBlocker, spawn,
         disableLighting: true,
       },
     },
+    // Raio nas duas mãos/controles: sem isso o Babylon ativa um de cada vez, e o primeiro gatilho
+    // da outra mão só a "ativa" — o clique se perde.
+    pointerSelectionOptions: { enablePointerSelectionOnAllControllers: true },
+    // Mãos: articulações como instâncias de uma única esfera (um draw call). A malha padrão do
+    // Babylon baixaria 2 GLBs + um NodeMaterial de assets.babylonjs.com a cada sessão.
+    handSupportOptions: {
+      handMeshes: { disableDefaultMeshes: true },
+      jointMeshes: { sourceMesh: createJointMesh(scene) },
+    },
+    // Esfera de toque (interação próxima): material simples em vez do NodeMaterial baixado do
+    // servidor de snippets do Babylon (rede + compilação a cada controle conectado).
+    nearInteractionOptions: { motionControllerOrbMaterial: createOrbMaterial() },
   });
   if (!xr.baseExperience) throw new Error("Não foi possível inicializar o WebXR.");
 
@@ -110,4 +108,25 @@ export async function createXRExperience(scene, { floorMeshes, isBlocker, spawn,
     },
   };
   return api;
+}
+
+/** Esfera-base das articulações das mãos (instanciada 25× por mão pelo Babylon). */
+function createJointMesh(scene) {
+  const mesh = MeshBuilder.CreateIcoSphere("xr-hand-joint", { radius: 0.5, subdivisions: 2 }, scene);
+  const mat = new StandardMaterial("mat-xr-hand-joint", scene);
+  mat.disableLighting = true;
+  mat.emissiveColor = Color3.FromHexString(PALETTE.cyan).scale(0.85);
+  mesh.material = mat;
+  mesh.isPickable = false;
+  mesh.isVisible = false;
+  return mesh;
+}
+
+/** Material da esfera de toque; vive na camada utilitária, onde o Babylon cria essa esfera. */
+function createOrbMaterial() {
+  const mat = new StandardMaterial("mat-xr-touch-orb", UtilityLayerRenderer.DefaultUtilityLayer.utilityLayerScene);
+  mat.disableLighting = true;
+  mat.emissiveColor = Color3.FromHexString(PALETTE.cyan);
+  mat.alpha = 0.55;
+  return mat;
 }

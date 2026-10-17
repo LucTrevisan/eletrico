@@ -47,6 +47,8 @@ export function createHud() {
   };
   const viewButtons = [...document.querySelectorAll("[data-view]")];
   const isNarrow = () => window.matchMedia("(max-width: 720px)").matches;
+  // Celular em pé ou deitado (mesmas faixas do CSS): legendas sob demanda, gavetas etc.
+  const compactQuery = window.matchMedia("(max-width: 720px), (max-height: 520px)");
   let handlers = {};
   let toastTimer = null;
 
@@ -258,6 +260,11 @@ export function createHud() {
       el.vehicleCredit.textContent = text ?? "";
       el.vehicleCredit.hidden = !text;
     },
+
+    /** Layout de celular (em pé ou deitado). */
+    isCompactLayout: () => compactQuery.matches,
+    /** Celular em pé (gavetas inferiores). */
+    isNarrowLayout: isNarrow,
 
     /**
      * Área da tela ocupada pelos painéis (px), para a câmera centralizar o carro no espaço livre.

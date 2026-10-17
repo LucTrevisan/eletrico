@@ -116,10 +116,10 @@ export function createShowroom(scene, quality, { dims, turntable, vehicle, spawn
   contact.material = contactMat;
 
   // Anéis de LED.
-  const ledTop = MeshBuilder.CreateTorus("platform-led-top", { diameter: R * 2 - 0.014, thickness: 0.024, tessellation: 96 }, scene);
+  const ledTop = createRing("platform-led-top", { diameter: R * 2 - 0.014, thickness: 0.024 }, scene);
   ledTop.position.y = H + 0.004;
   ledTop.material = emissiveMaterial("mat-led-cyan", PALETTE.cyan, "platform");
-  const ledBase = MeshBuilder.CreateTorus("platform-led-base", { diameter: R * 2 + 0.17, thickness: 0.035, tessellation: 96 }, scene);
+  const ledBase = createRing("platform-led-base", { diameter: R * 2 + 0.17, thickness: 0.035 }, scene);
   ledBase.position.y = 0.016;
   ledBase.material = emissiveMaterial("mat-led-blue", PALETTE.blue, "platform");
   glowMeshes.push(ledTop, ledBase);
@@ -143,10 +143,10 @@ export function createShowroom(scene, quality, { dims, turntable, vehicle, spawn
   emissiveSetters.platform.push((k) => (spillTex.level = k));
 
   // ---------------------------------------------------------------- halo no teto
-  const halo = MeshBuilder.CreateTorus("ceiling-halo", { diameter: R * 2.1, thickness: 0.085, tessellation: 96 }, scene);
+  const halo = createRing("ceiling-halo", { diameter: R * 2.1, thickness: 0.085, sides: 10 }, scene);
   halo.position.y = 4.4;
   halo.material = emissiveMaterial("mat-halo", "#c9f6ff", "halo", 0.95);
-  const haloInner = MeshBuilder.CreateTorus("ceiling-halo-inner", { diameter: R * 1.66, thickness: 0.028, tessellation: 96 }, scene);
+  const haloInner = createRing("ceiling-halo-inner", { diameter: R * 1.66, thickness: 0.028 }, scene);
   haloInner.position.y = 4.42;
   haloInner.material = emissiveMaterial("mat-halo-inner", PALETTE.cyan, "halo");
   glowMeshes.push(halo, haloInner);
@@ -186,8 +186,8 @@ export function createShowroom(scene, quality, { dims, turntable, vehicle, spawn
 
   // ---------------------------------------------------------------- anel de varredura (abertura)
   const scanDiameter = dims.length + 0.55;
-  // Toro unitário escalado em elipse que "abraça" o carro (y também escala, para manter o tubo visível).
-  const scan = MeshBuilder.CreateTorus("scan-ring", { diameter: 1, thickness: 0.028 / scanDiameter, tessellation: 96 }, scene);
+  // Anel unitário escalado em elipse que "abraça" o carro (y também escala, para manter o tubo visível).
+  const scan = createRing("scan-ring", { diameter: 1, thickness: 0.028 / scanDiameter, segments: 96 }, scene);
   scan.scaling.set(dims.width + 0.55, scanDiameter, scanDiameter);
   scan.parent = turntable;
   const scanMat = new StandardMaterial("mat-scan", scene);
@@ -471,10 +471,12 @@ function createInstitutionTotem(scene, position, facingFrom) {
   const tex = new DynamicTexture("tex-totem", { width: texW, height: texH }, scene, true);
   tex.anisotropicFilteringLevel = 8;
   drawTotem(tex, null);
-  // Arte oficial opcional: public/textures/senai-logo.png substitui o logotipo desenhado.
-  const logo = new Image();
-  logo.onload = () => drawTotem(tex, logo);
-  logo.src = INSTITUTION.logoUrl;
+  // Arte oficial opcional (config: INSTITUTION.logoUrl) substitui o logotipo desenhado.
+  if (INSTITUTION.logoUrl) {
+    const logo = new Image();
+    logo.onload = () => drawTotem(tex, logo);
+    logo.src = INSTITUTION.logoUrl;
+  }
 
   const faceMat = new StandardMaterial("mat-totem-face", scene);
   faceMat.disableLighting = true;
@@ -764,4 +766,20 @@ function roundRect(ctx, x, y, w, h, r) {
 /** `letterSpacing` do canvas (Chromium/Quest); ignorado com segurança onde não existe. */
 function setSpacing(ctx, value) {
   if ("letterSpacing" in ctx) ctx.letterSpacing = value;
+}
+
+/**
+ * Anel fino como tubo sobre um círculo: 128 segmentos × 8 lados ≈ 2 mil triângulos, contra ~18 mil
+ * de um CreateTorus com a mesma suavidade no contorno (o toro usa a mesma tesselação nos dois sentidos).
+ */
+function createRing(name, { diameter, thickness, segments = 128, sides = 8 }, scene) {
+  const r = diameter / 2;
+  const path = [];
+  for (let i = 0; i <= segments; i++) {
+    const a = (i / segments) * Math.PI * 2;
+    path.push(new Vector3(Math.cos(a) * r, 0, Math.sin(a) * r));
+  }
+  const ring = MeshBuilder.CreateTube(name, { path, radius: thickness / 2, tessellation: sides }, scene);
+  ring.isPickable = false;
+  return ring;
 }

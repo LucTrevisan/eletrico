@@ -113,6 +113,9 @@ const VIEWS = {
   top: { label: "Superior", alpha: Math.PI / 2, beta: 0.14, fit: (d) => ({ h: d.width, v: d.length, depth: d.height * 0.7 }) },
 };
 
+/** Altura aproximada do cabeçalho do HUD (px), descontada da área livre. */
+const HEADER_PX = 64;
+
 export function createViewController(scene, camera, dims, floorOffset) {
   // Alvo um pouco abaixo do centro do carro: sobra espaço para a barra de ferramentas inferior.
   const target = new Vector3(0, floorOffset + dims.height * 0.34, 0);
@@ -123,16 +126,30 @@ export function createViewController(scene, camera, dims, floorOffset) {
   let active = null;
   let current = "hero";
 
-  /** Distância para que o carro caiba no quadro naquela vista (inclui celular em retrato). */
-  function fitRadius(view) {
+  /**
+   * Distância para que o carro caiba no quadro naquela vista (inclui celular em retrato).
+   * `free`: mede só a área livre — sem painéis, gavetas e cabeçalho — com a margem `margin`
+   * (no celular, faz o carro ocupar o espaço acima da gaveta em vez de ficar pequeno no topo).
+   */
+  function fitRadius(view, { free = false, margin = 1.08 } = {}) {
     const engine = scene.getEngine();
-    const aspect = engine.getRenderWidth() / Math.max(1, engine.getRenderHeight());
     const tanV = Math.tan(camera.fov / 2);
-    const tanH = tanV * aspect;
     const { h, v, depth } = view.fit(dims);
-    // ~20% da altura da tela fica sob o cabeçalho e a barra de ferramentas.
-    const byH = ((h / 2) * 1.45) / tanH + depth;
-    const byV = ((v / 2) * 1.35) / (tanV * 0.8) + depth;
+    let byH;
+    let byV;
+    if (free) {
+      const H = canvas.clientHeight || 1;
+      const fw = Math.max(1, canvas.clientWidth - insets.left - insets.right) / H;
+      const fh = Math.max(1, H - insets.bottom - HEADER_PX) / H;
+      // Piso de distância: muito perto, a perspectiva distorce e a frente do carro sai do quadro.
+      byH = Math.max(dims.length * 1.5, ((h / 2) * margin) / (tanV * fw) + depth);
+      byV = ((v / 2) * margin) / (tanV * fh) + depth;
+    } else {
+      const aspect = engine.getRenderWidth() / Math.max(1, engine.getRenderHeight());
+      // ~20% da altura da tela fica sob o cabeçalho e a barra de ferramentas.
+      byH = ((h / 2) * 1.45) / (tanV * aspect) + depth;
+      byV = ((v / 2) * 1.35) / (tanV * 0.8) + depth;
+    }
     return Math.min(camera.upperRadiusLimit, Math.max(camera.lowerRadiusLimit + 0.4, byH, byV));
   }
 
@@ -159,17 +176,18 @@ export function createViewController(scene, camera, dims, floorOffset) {
    * Enquadra uma caixa (coordenadas de mundo) a partir do ângulo `alpha`, ex.: carro + carregador
    * externo no modo Recarga. Aproximação pela caixa envolvente projetada no plano da câmera.
    */
-  function frameBox(min, max, { alpha, beta = 1.22, duration = 1400 } = {}) {
+  function frameBox(min, max, { alpha, beta = 1.22, duration = 1400, free = false, margin, depth = 0.3 } = {}) {
     const sx = max.x - min.x;
     const sz = max.z - min.z;
     const s = Math.abs(Math.sin(alpha));
     const c = Math.abs(Math.cos(alpha));
-    const view = { alpha, beta, fit: () => ({ h: sx * s + sz * c, v: (max.y - min.y) * 1.15, depth: (sx * c + sz * s) * 0.3 }) };
+    // `depth`: fração da profundidade somada à distância (a caixa superestima a silhueta do carro).
+    const view = { alpha, beta, fit: () => ({ h: sx * s + sz * c, v: (max.y - min.y) * 1.15, depth: (sx * c + sz * s) * depth }) };
     current = null;
-    return animateTo(view, Vector3.Center(min, max), { duration });
+    return animateTo(view, Vector3.Center(min, max), { duration, fit: { free, margin } });
   }
 
-  function animateTo(view, goal, { duration, radiusScale = 1 }) {
+  function animateTo(view, goal, { duration, radiusScale = 1, fit }) {
     cancel();
     const from = {
       alpha: nearestAlpha(camera.alpha, view.alpha),
@@ -179,7 +197,7 @@ export function createViewController(scene, camera, dims, floorOffset) {
       ty: camera.target.y,
       tz: camera.target.z,
     };
-    const to = { alpha: view.alpha, beta: view.beta, radius: Math.min(camera.upperRadiusLimit, fitRadius(view) * radiusScale) };
+    const to = { alpha: view.alpha, beta: view.beta, radius: Math.min(camera.upperRadiusLimit, fitRadius(view, fit) * radiusScale) };
     camera.alpha = from.alpha;
     return new Promise((resolve) => {
       active = tween(scene, {
@@ -200,18 +218,29 @@ export function createViewController(scene, camera, dims, floorOffset) {
     });
   }
 
-  /** Aproxima a câmera de um ponto (coordenadas de mundo) mantendo o ângulo atual. */
-  function focusOn(point, size, { duration = 1100 } = {}) {
+  /**
+   * Aproxima a câmera de um ponto (coordenadas de mundo) mantendo o ângulo horizontal atual.
+   * `maxBeta` limita a inclinação (ex.: peças sob o assoalho são vistas de cima, sem as rodas na frente).
+   */
+  function focusOn(point, size, { duration = 1100, maxBeta = null } = {}) {
     cancel();
     current = null;
-    const from = { radius: camera.radius, tx: camera.target.x, ty: camera.target.y, tz: camera.target.z };
-    const toRadius = Math.min(camera.upperRadiusLimit, Math.max(camera.lowerRadiusLimit, size * 1.35 + 1.9));
+    const from = { radius: camera.radius, beta: camera.beta, tx: camera.target.x, ty: camera.target.y, tz: camera.target.z };
+    const toBeta = maxBeta == null ? from.beta : Math.min(from.beta, maxBeta);
+    // A distância considera só a área livre da tela (sem painéis e gavetas): no celular em pé ou no
+    // tablet com o painel ocupando metade da largura, a câmera se afasta e o carro continua em contexto.
+    const h = canvas.clientHeight || 1;
+    const freeW = Math.max(1, canvas.clientWidth - insets.left - insets.right) / h;
+    const freeH = Math.max(1, h - insets.bottom) / h;
+    const fit = Math.min(2.4, 1 / Math.min(1, freeW, freeH));
+    const toRadius = Math.min(camera.upperRadiusLimit, Math.max(camera.lowerRadiusLimit, size * 1.35 + 2.4) * fit);
     return new Promise((resolve) => {
       active = tween(scene, {
         duration,
         ease: easeInOutCubic,
         onUpdate: (t) => {
           camera.radius = from.radius + (toRadius - from.radius) * t;
+          camera.beta = from.beta + (toBeta - from.beta) * t;
           camera.target.set(
             from.tx + (point.x - from.tx) * t,
             from.ty + (point.y - from.ty) * t,

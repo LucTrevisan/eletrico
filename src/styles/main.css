@@ -699,8 +699,18 @@ button {
 }
 
 /* Com o painel de energia aberto, o cartão do veículo mostra só nome e status. */
-body.energy-open .vehicle-card .dims {
+body.energy-open .vehicle-card :is(.dims, .credit) {
   display: none;
+}
+
+/* Notebook de tela baixa: textos longos da energia ficam em "Explicação" e os controles cabem sem rolar. */
+@media (min-width: 721px) and (max-height: 820px) {
+  .energy-panel .ep-more {
+    display: inline-block;
+  }
+  .energy-panel:not(.is-expanded) :is(.ep-text, .ep-session, .ep-disclaimer) {
+    display: none;
+  }
 }
 
 .energy-panel {
@@ -991,6 +1001,7 @@ body.energy-open .vehicle-card .dims {
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
+  -webkit-touch-callout: none; /* iOS: toque longo não abre o menu de contexto */
   touch-action: none;
 }
 
@@ -1370,6 +1381,13 @@ body.toolbar-hidden .toolbar {
   .hint {
     font-size: 12px;
   }
+  /* Aviso abaixo do cartão do veículo (no topo central ele ficaria atrás do cartão). */
+  .toast {
+    top: calc(max(16px, env(safe-area-inset-top)) + 128px);
+    z-index: 5;
+    width: max-content; /* com left: 50%, a largura disponível seria só meia tela */
+    max-width: calc(100vw - 32px);
+  }
   /* No celular o painel vira uma folha acima da barra. */
   .callout {
     padding: 4px 9px 4px 8px;
@@ -1412,6 +1430,15 @@ body.toolbar-hidden .toolbar {
   .energy-panel:not(.is-expanded) .ep-sim {
     padding-top: 6px;
   }
+  /* Segurando Acelerar/Frear: a gaveta fica só com mostradores e botões e o carro ganha a tela.
+     Ela é ancorada embaixo, então os botões não saem de baixo do dedo. */
+  body.energy-holding .energy-panel :is(header, .sheet-handle, .ep-tabs, h3, .ep-text, .ep-chain, .ep-key, .ep-session, .ep-disclaimer, .ep-sim h4) {
+    display: none;
+  }
+  body.energy-holding .energy-panel .ep-sim {
+    padding-top: 0;
+    border-top: none;
+  }
   .ep-text {
     font-size: 12px;
   }
@@ -1420,8 +1447,8 @@ body.toolbar-hidden .toolbar {
   }
 }
 
-/* Celular: vistas num menu compacto (botão "Vistas") e barra recolhível ("Recolher"). */
-@media (max-width: 720px) {
+/* Celular (em pé ou deitado): vistas num menu compacto (botão "Vistas") e barra recolhível ("Recolher"). */
+@media (max-width: 720px), (max-height: 520px) {
   .tool-views,
   .tool-retract {
     display: flex;
@@ -1454,7 +1481,27 @@ body.toolbar-hidden .toolbar {
   }
 }
 
+@media (max-width: 720px) {
+  /* Com a energia aberta, o cartão sai do caminho: as legendas usam a faixa superior inteira. */
+  body.energy-open .vehicle-card {
+    display: none;
+  }
+}
+
 @media (max-width: 420px) {
+  /* Cabeçalho numa linha só em telas de 360 px. */
+  .brand-text strong {
+    font-size: 14px;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+  }
+  .hud-top-right {
+    gap: 6px;
+  }
+  .chip {
+    white-space: nowrap;
+    padding: 6px 10px;
+  }
   .toolbar,
   .toolbar-group {
     gap: 2px;
@@ -1479,6 +1526,73 @@ body.toolbar-hidden .toolbar {
   .vehicle-card,
   .hint {
     display: none;
+  }
+}
+
+/* Celular deitado: painéis laterais entre o cabeçalho e a barra, energia compacta. */
+@media (min-width: 721px) and (max-height: 520px) {
+  .tool {
+    min-width: 56px;
+    height: 50px;
+    font-size: 10px;
+  }
+  .component-panel,
+  .energy-panel {
+    top: calc(max(10px, env(safe-area-inset-top)) + 52px);
+    max-height: calc(100dvh - 52px - 82px - max(10px, env(safe-area-inset-top)));
+    padding: 10px 14px 12px;
+  }
+  .component-panel {
+    width: min(340px, 42vw);
+  }
+  .energy-panel {
+    width: min(320px, 40vw);
+  }
+  .component-panel h3 {
+    font-size: 18px;
+  }
+  /* O título do modo repete a aba selecionada: some para os controles caberem sem rolar. */
+  .energy-panel:not(.is-expanded) :is(.ep-chain, .ep-key, .ep-sim h4, h3) {
+    display: none;
+  }
+  .ep-tabs {
+    margin: 2px 0 6px;
+  }
+  .ep-tabs button {
+    padding: 5px 4px;
+  }
+  .energy-panel .sheet-handle {
+    height: 10px;
+    margin: -4px 0 0;
+  }
+  .ep-sim {
+    padding-top: 4px;
+  }
+  .ep-stats b {
+    font-size: 18px;
+  }
+  .ep-state {
+    min-height: 0;
+    margin: 4px 0;
+  }
+  .ep-controls-charge {
+    gap: 6px;
+  }
+  .ep-hold,
+  .ep-primary {
+    min-height: 40px;
+  }
+  /* Com a energia aberta, a barra vai para a direita e o painel usa toda a altura à esquerda. */
+  body.energy-open .toolbar {
+    left: auto;
+    right: var(--gutter);
+    transform: none;
+  }
+  body.energy-open .energy-panel {
+    max-height: calc(100dvh - 52px - 22px - max(10px, env(safe-area-inset-top)));
+  }
+  .help-panel {
+    max-height: calc(100dvh - 150px);
   }
 }
 

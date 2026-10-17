@@ -12,9 +12,10 @@ import { getContent } from "./componentContent.js";
  *  - Hover com o raio do controle/mão em VR: brilho + etiqueta 3D com o nome junto ao ponto apontado.
  *  - Toque direto com o dedo (hand tracking): componentes internos e legendas aceitam "near pick".
  *  - Duplo clique/toque: ação rápida do componente (ex.: abrir/fechar portas).
+ *  - Toque fora das peças (tela de toque): onEmptyTap — no celular, fecha a seleção.
  *  - Seleção: brilho pulsante na cor do componente.
  */
-export function createSelection(scene, { meshesByComponent, states, onSelect, onDoubleSelect, onHover }) {
+export function createSelection(scene, { meshesByComponent, states, onSelect, onDoubleSelect, onHover, onEmptyTap }) {
   let selected = null;
   const white = new Color3(1, 1, 1);
   const hoverColor = Color3.FromHexString(PALETTE.cyan).toLinearSpace();
@@ -58,6 +59,7 @@ export function createSelection(scene, { meshesByComponent, states, onSelect, on
       const mesh = pi.pickInfo?.pickedMesh;
       const id = componentOf(mesh);
       if (id) onSelect?.(id, mesh);
+      else if (pi.event?.pointerType === "touch") onEmptyTap?.(); // toque fora das peças (celular/tablet)
     } else if (pi.type === PointerEventTypes.POINTERDOUBLETAP) {
       const id = componentOf(pi.pickInfo?.pickedMesh);
       if (id) onDoubleSelect?.(id);

@@ -113,6 +113,8 @@ function createDesktopPanel(handlers) {
     if (held[name] === on) return;
     held[name] = on;
     (name === "accel" ? el.accel : el.brake).setAttribute("aria-pressed", String(on));
+    // Celular: enquanto pressionado, a gaveta encolhe para o carro e as rodas ficarem à vista (CSS).
+    document.body.classList.toggle("energy-holding", held.accel || held.brake);
     handlers.onHold?.(name, on);
   };
   const bindHold = (btn, name) => {

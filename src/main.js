@@ -4,6 +4,7 @@
  *   Etapa 2: raio X, identificação de componentes e painéis educativos.
  *   Etapa 3: fluxo de energia (aceleração, regeneração, recarga CA/CC) e simulação.
  *   Etapa 4: exploded view, portas, seleção aprimorada, hand tracking e interface retrátil.
+ *   Etapa 5: desempenho (fusão de malhas, texturas, WebXR sob demanda), materiais, controles VR e responsividade.
  *
  * A inicialização é dividida em seções independentes, cada uma com seu próprio
  * tratamento de erro, para que uma falha (ex.: WebXR indisponível) nunca impeça
@@ -24,7 +25,7 @@ import { createShowroom } from "./scene/environment.js";
 import { createLighting } from "./scene/lighting.js";
 import { playIntro, tween } from "./scene/presentation.js";
 import { createAdaptiveQuality, detectQuality, getPreset } from "./scene/quality.js";
-import { loadVehicle, orientVehicle, resolveModel } from "./vehicle/loadVehicle.js";
+import { loadVehicle, orientVehicle, resolveModel, tuneMaterials } from "./vehicle/loadVehicle.js";
 import {
   INTERNAL_COMPONENTS,
   computeComponentLayout,
@@ -41,8 +42,7 @@ import { createXRayMode } from "./vehicle/xrayMode.js";
 import { createComponentCallouts } from "./ui/componentCallouts.js";
 import { createComponentLabels, createFloatingLabels } from "./ui/componentLabels.js";
 import { createComponentPanel } from "./ui/componentPanel.js";
-import { checkVRSupport, createXRExperience } from "./xr/xrExperience.js";
-import { setupXRInteractions } from "./xr/interactions.js";
+import { checkVRSupport } from "./xr/support.js";
 import { createHud } from "./ui/hud.js";
 import { createEnergyPanel } from "./ui/energyPanel.js";
 import { createEnergyFlow } from "./simulation/energyFlow.js";
@@ -69,6 +69,15 @@ boot().catch((err) => {
 async function boot() {
   const canvas = document.getElementById("renderCanvas");
   let quality = detectQuality();
+  // Celular (em pé ou deitado): legendas sob demanda, gavetas recolhidas e enquadramentos próprios.
+  const mobileUI = () => hud.isCompactLayout();
+  const portraitUI = () => hud.isNarrowLayout();
+  const hinted = new Set();
+  const mobileHint = (key, text) => {
+    if (!mobileUI() || hinted.has(key)) return;
+    hinted.add(key);
+    hud.toast(text, 4000);
+  };
 
   // ------------------------------------------------------------------ A) cena
   const engine = createEngine(canvas, quality, {
@@ -91,6 +100,7 @@ async function boot() {
     vehicle = await loadVehicle(scene, model, { parent: turntable, onProgress: (f) => hud.setProgress(f) });
     hud.setProgress(1);
     hud.setLoaderStatus("Preparando materiais e iluminação…");
+    tuneMaterials(vehicle, quality);
     organizeVehicle(vehicle, VEHICLE);
     logVehicle(vehicle);
   } catch (err) {
@@ -185,6 +195,9 @@ async function boot() {
           max: new Vector3(dims.width / 2, dims.height, dims.length / 2),
         },
         onSelect: (id) => selectComponent(id),
+        // Celular: só a legenda da peça tocada. No fluxo de energia elas ficam, mas somem enquanto
+        // Acelerar/Frear está pressionado, para o carro e as rodas ficarem à vista.
+        onDemand: () => mobileUI() && (!energy.on || energy.holding),
       });
       let labelLevel = 0;
       labels = {
@@ -219,12 +232,15 @@ async function boot() {
         onChange: (on) => {
           hud.setXRay(on);
           vrMenu?.setXRayState(on);
+          if (on && !energy.on) mobileHint("legendas", "Toque numa peça para ver o nome dela.");
         },
       });
       selection = createSelection(scene, {
         meshesByComponent: new Map(Object.values(componentItems).map((c) => [c.id, c.meshes])),
         states,
         onSelect: (id, mesh) => selectComponent(id, mesh),
+        // Celular: tocar fora das peças fecha a seleção (e a legenda dela).
+        onEmptyTap: () => mobileUI() && panel.openId && clearSelection(),
         onHover: (id, x, y) => {
           canvas.style.cursor = id ? "pointer" : "";
           if (!id) return hud.hideTooltip();
@@ -239,10 +255,13 @@ async function boot() {
   }
 
   /** Centro atual (mundo) de um componente — acompanha portas abertas e a vista explodida. */
-  function currentWorldCenter(item) {
+  function currentWorldCenter(item, picked) {
+    // Peça ilustrativa com mais de uma parte (ex.: e-Axle dianteiro e traseiro no AWD): foca a parte
+    // clicada ou, vindo da legenda, a principal — nunca o meio do caminho entre elas.
+    const meshes = item.parts?.length > 1 ? [item.meshes.includes(picked) ? picked : item.parts[0].mesh] : item.meshes;
     const min = new Vector3(Infinity, Infinity, Infinity);
     const max = new Vector3(-Infinity, -Infinity, -Infinity);
-    for (const m of item.meshes) {
+    for (const m of meshes) {
       if (!m.isEnabled()) continue;
       m.computeWorldMatrix(true);
       const b = m.getBoundingInfo().boundingBox;
@@ -291,18 +310,22 @@ async function boot() {
     selection.setSelected(id);
     labels?.setActive(id);
     explodeLabels?.setActive(id);
-    const world = currentWorldCenter(item);
+    const world = currentWorldCenter(item, mesh);
     if (xrApi?.inXR) {
       panel.showVR(id, content, { illustrative: item.illustrative, actions, camera: xrApi.camera, target: world });
       return;
     }
     hud.closeHelp();
-    panel.showDesktop(id, content, { illustrative: item.illustrative, actions });
+    // Celular com o carro explodido: o toque mostra o nome (legenda + gaveta recolhida) sem tirar a
+    // visão de conjunto; a alça da gaveta abre os detalhes.
+    const peek = mobileUI() && !!explode?.exploded;
+    panel.showDesktop(id, content, { illustrative: item.illustrative, actions, collapsed: peek });
     const size = Math.max(item.size.x, item.size.y, item.size.z);
     // Peças do tamanho do carro (carroceria, portas, rodas) não pedem aproximação.
-    if (size < Math.min(2.6, dims.length * 0.55)) {
+    if (!peek && size < Math.min(2.6, dims.length * 0.55)) {
       hud.setActiveView(null);
-      views.focusOn(world, size);
+      views.setScreenInsets(hud.getInsets()); // o painel acabou de abrir: a área livre já muda
+      views.focusOn(world, size, { maxBeta: INTERNAL_COMPONENTS.includes(id) ? 0.78 : null });
     }
   }
 
@@ -340,12 +363,14 @@ async function boot() {
     }
   }
 
-  const energy = { on: false, tab: "accel", chargeType: "ac", xrayBefore: false, lastUi: 0 };
+  const energy = { on: false, tab: "accel", chargeType: "ac", xrayBefore: false, lastUi: 0, hold: { accel: false, brake: false }, holding: false };
   const energyModeKey = () => (energy.tab === "charge" ? `charge-${energy.chargeType}` : energy.tab);
 
   const energyPanel = createEnergyPanel(scene, {
     onTab: (tab) => setEnergyTab(tab, { user: true }),
     onHold(name, on) {
+      energy.hold[name] = on;
+      energy.holding = energy.hold.accel || energy.hold.brake;
       if (!energy.on) return;
       if (on && name === "accel") setEnergyTab("accel");
       if (on && name === "brake" && sim.snapshot().speedKmh > 1) setEnergyTab("regen");
@@ -389,7 +414,21 @@ async function boot() {
     applyEnergyMode();
     if (!energy.on) return;
     if (tab === "charge" && (user || prev !== "charge")) frameCharging();
-    else if (prev === "charge" && tab !== "charge" && !xrApi?.inXR) views.flyTo("hero");
+    else if (prev === "charge" && tab !== "charge" && !xrApi?.inXR) portraitUI() ? frameDriving() : views.flyTo("hero");
+  }
+
+  /**
+   * Celular em pé: o carro ocupa a área livre acima da gaveta de energia (em vez de ficar pequeno no topo),
+   * visto de frente-esquerda para as rodas e o e-Axle dianteiro aparecerem.
+   */
+  function frameDriving() {
+    if (xrApi?.inXR) return;
+    const o = turntable.getAbsolutePosition();
+    const min = new Vector3(-dims.width / 2, 0, -dims.length / 2).addInPlace(o);
+    const max = new Vector3(dims.width / 2, dims.height, dims.length / 2).addInPlace(o);
+    hud.setActiveView(null);
+    views.setScreenInsets(hud.getInsets()); // a gaveta acabou de abrir
+    views.frameBox(min, max, { alpha: Math.PI / 2 + 0.42, beta: 1.24, free: true, margin: 1, depth: 0.12 });
   }
 
   /** Desktop: enquadra carro + carregador externo lado a lado (o prato já está alinhado em 0°). */
@@ -435,6 +474,8 @@ async function boot() {
       if (xrApi?.inXR) energyPanel.showVR(xrApi.camera);
       else energyPanel.showDesktop();
       if (energy.tab === "charge") frameCharging();
+      else if (portraitUI()) frameDriving();
+      else if (!xrApi?.inXR && views.current == null) views.flyTo("hero"); // vinha do zoom numa peça: o fluxo percorre o carro todo
     } else {
       if (energy.tab === "charge" && !xrApi?.inXR) views.flyTo("hero");
       sim.releaseInputs();
@@ -529,6 +570,7 @@ async function boot() {
           max: new Vector3(dims.width / 2 + 0.6, dims.height + 1.45, dims.length / 2 + 0.7),
         },
         onSelect: (id) => selectComponent(id),
+        onDemand: mobileUI, // celular: só o nome da peça tocada (12 legendas não cabem na tela)
       });
       const floating = createFloatingLabels(scene, { items: anchors.list, parent: turntable });
       let level = 0;
@@ -567,6 +609,7 @@ async function boot() {
     explodeLabels?.setVisibility(on ? 1 : 0);
     hud.setExplode(on);
     vrMenu?.setExplodeState(on);
+    if (on) mobileHint("legendas", "Toque numa peça para ver o nome dela.");
     if (!xrApi?.inXR) {
       hud.setActiveView(null);
       views.flyTo(views.current ?? "hero", { radiusScale: on ? 1.32 : 1 });
@@ -709,7 +752,12 @@ async function boot() {
     hud.setVR("unavailable", support.reason);
   } else {
     try {
-      await ensureVRMenu();
+      // WebXR e o painel 3D (Babylon GUI) só são baixados aqui, em dispositivos com VR.
+      const [{ createXRExperience }, { setupXRInteractions }] = await Promise.all([
+        import("./xr/xrExperience.js"),
+        import("./xr/interactions.js"),
+        ensureVRMenu(),
+      ]);
       xrApi = await createXRExperience(scene, {
         floorMeshes: showroom.teleportFloors,
         isBlocker: (mesh) => !!mesh.metadata?.evxr?.vehicle || showroom.isTeleportBlocker(mesh),
@@ -763,7 +811,6 @@ async function boot() {
     },
     /** Abre/fecha todas as portas. */
     portas: () => toggleAllDoors(),
-    /** Seleciona um componente pelo id (ex.: "bateria", "motor", "inversor"). */
     /** Liga/desliga o fluxo de energia; `aba`: "accel" | "regen" | "charge". */
     energia(on = !energy.on, aba) {
       setEnergy(on);
@@ -771,7 +818,9 @@ async function boot() {
       return energy.on;
     },
     simulacao: () => sim.snapshot(),
+    /** Seleciona um componente pelo id (ex.: "bateria", "motor", "inversor"); null limpa a seleção. */
     selecionar(id) {
+      if (id == null) return clearSelection();
       if (!componentItems[id]) return console.warn("Disponíveis:", Object.keys(componentItems).join(", "));
       selectComponent(id);
     },

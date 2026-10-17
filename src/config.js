@@ -12,13 +12,15 @@ export const APP = {
 
 /**
  * Identificação da escola (totem no showroom, placa em VR e tela de carregamento).
- * `logoUrl` é opcional: se o arquivo existir, a arte oficial substitui o logotipo desenhado.
+ * `logoUrl` é opcional: salve a arte oficial em public/textures/ e informe o caminho aqui
+ * (ex.: "textures/senai-logo.png") para substituir o logotipo desenhado. null = só o desenho
+ * (nenhuma requisição extra na abertura).
  */
 export const INSTITUTION = {
   eyebrow: "Escola SENAI",
   schoolName: "Antonio Adolpho Lobbe",
   fullName: "SENAI Antonio Adolpho Lobbe",
-  logoUrl: "textures/senai-logo.png",
+  logoUrl: null,
 };
 
 /** Paleta oficial (hex sRGB). */
@@ -60,6 +62,11 @@ export const VEHICLE_MODELS = [
       interior: [/^misc_[ab]/i, /steering/i],
       freios: [/^hub_/i],
     },
+    // Ajustes finos de material (nome do material no GLB). clearCoat = verniz, só fora do perfil leve.
+    materials: {
+      carpaint: { clearCoat: { intensity: 1, roughness: 0.06 } },
+      velg: { metallic: 0.85, roughness: 0.34 }, // rodas de liga leve (no arquivo vinham como plástico fosco)
+    },
     notes: {
       bateria: "Íons de lítio sob o assoalho, refrigerada a líquido; ~71,4 kWh brutos na versão de lançamento (varia por versão e ano).",
       motor: "Versão AWD (a do modelo): dois motores, um por eixo, de ~80 kW cada (~160 kW combinados no lançamento). A FWD tem só o dianteiro.",
@@ -91,6 +98,11 @@ export const VEHICLE = {
    *   "none"      — mantém todas as malhas originais
    */
   mergeStrategy: "assembly",
+  /**
+   * Componentes que se movem em bloco: além de unidos dentro de cada conjunto, são unidos entre
+   * conjuntos por material (no bZ4X: 95 → ~69 malhas). Portas, rodas e freios ficam por conjunto.
+   */
+  mergeAcross: ["carroceria", "vidros", "interior", "chassi"],
   /** Malhas que nunca são unidas (precisam de pivô próprio, ex.: portas que abrem). */
   keepSeparate: [/porta_painel|porta_contorno|porta_macaneta|door|^boot/i],
 };

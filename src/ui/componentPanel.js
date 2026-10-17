@@ -5,6 +5,7 @@ const ILLUSTRATIVE_NOTE = "Representação ilustrativa — este componente não 
  *  - Desktop/celular: painel HTML lateral (folha inferior retrátil no celular).
  *  - VR: painel holográfico 3D (Babylon GUI), ao lado da linha de visão até o componente.
  * `actions` (opcional): botões de ação do componente, ex.: [{ id: "doors", label: "Abrir portas" }].
+ * `collapsed` (celular): abre a folha recolhida — só o nome; a alça expande os detalhes.
  */
 export function createComponentPanel(scene, { onClose, onAction }) {
   const desktop = createDesktopPanel(onClose, onAction);
@@ -16,10 +17,10 @@ export function createComponentPanel(scene, { onClose, onAction }) {
     get openId() {
       return openId;
     },
-    showDesktop(id, content, { illustrative = false, actions = [] } = {}) {
+    showDesktop(id, content, { illustrative = false, actions = [], collapsed = false } = {}) {
       openId = id;
       vr?.hide();
-      desktop.show(content, illustrative, actions);
+      desktop.show(content, illustrative, actions, collapsed);
     },
     async showVR(id, content, { illustrative = false, actions = [], camera, target }) {
       openId = id;
@@ -80,7 +81,7 @@ function createDesktopPanel(onClose, onAction) {
 
   return {
     setActions,
-    show(c, illustrative, actions) {
+    show(c, illustrative, actions, collapsed = false) {
       el.root.style.setProperty("--accent", c.color);
       el.tag.textContent = c.tag;
       el.title.textContent = c.title;
@@ -101,7 +102,8 @@ function createDesktopPanel(onClose, onAction) {
       }
       setActions(actions);
       el.root.hidden = false;
-      el.root.classList.remove("is-collapsed"); // nova seleção sempre abre expandida
+      el.root.classList.toggle("is-collapsed", collapsed); // padrão: nova seleção abre expandida
+      el.root.querySelector(".sheet-handle")?.setAttribute("aria-expanded", String(!collapsed));
       document.body.classList.add("cp-open");
       // reinicia a animação de entrada
       el.root.classList.remove("is-entering");

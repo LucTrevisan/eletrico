@@ -17,11 +17,17 @@ export async function resolveModel(candidates) {
   return candidates[candidates.length - 1];
 }
 
+/** URLs já confirmadas: evita repetir a ida e volta ao servidor antes do download. */
+const verified = new Set();
+
 async function fileExists(url) {
+  if (verified.has(url)) return true;
   try {
     const res = await fetch(url, { method: "HEAD", cache: "no-store" });
     // O servidor de desenvolvimento do Vite responde index.html (200) para arquivos inexistentes.
-    return res.ok && !(res.headers.get("content-type") || "").includes("text/html");
+    const ok = res.ok && !(res.headers.get("content-type") || "").includes("text/html");
+    if (ok) verified.add(url);
+    return ok;
   } catch {
     return false;
   }
@@ -68,7 +74,30 @@ export async function loadVehicle(scene, model, { parent, onProgress }) {
   return vehicle;
 }
 
-const FRONT_MARKERS = /headlight|head_?lamp|farol|front_?light/i;
+/**
+ * Ajustes finos de material por modelo (config: VEHICLE_MODELS[].materials), aplicados antes da
+ * clonagem por peça. O verniz (clear coat) fica fora do perfil leve: no Quest é uma camada especular
+ * extra em toda a carroceria.
+ */
+export function tuneMaterials(vehicle, quality) {
+  const rules = vehicle.model.materials ?? {};
+  const done = new Set();
+  for (const mesh of vehicle.meshes) {
+    const mat = mesh.material;
+    const rule = mat && rules[mat.name];
+    if (!rule || done.has(mat) || !("metallic" in mat)) continue;
+    done.add(mat);
+    if (rule.metallic != null) mat.metallic = rule.metallic;
+    if (rule.roughness != null) mat.roughness = rule.roughness;
+    if (rule.clearCoat && quality.id !== "low") {
+      mat.clearCoat.isEnabled = true;
+      mat.clearCoat.intensity = rule.clearCoat.intensity ?? 1;
+      mat.clearCoat.roughness = rule.clearCoat.roughness ?? 0.06;
+    }
+  }
+}
+
+const FRONT_MARKERS =/headlight|head_?lamp|farol|front_?light/i;
 const REAR_MARKERS = /taillight|tail_?lamp|lanterna|brakelight|brake_?light|reversinglight|rear_?light/i;
 
 /**

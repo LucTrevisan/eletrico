@@ -54,5 +54,4 @@ export { PointerEventTypes } from "@babylonjs/core/Events/pointerEvents.js";
 export { SceneInstrumentation } from "@babylonjs/core/Instrumentation/sceneInstrumentation.js";
 export { Animation } from "@babylonjs/core/Animations/animation.js";
 export { CubicEase, EasingFunction } from "@babylonjs/core/Animations/easing.js";
-export { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience.js";
-export { WebXRState } from "@babylonjs/core/XR/webXRTypes.js";
+// WebXR: importado direto em src/xr/xrExperience.js (carregado só em dispositivos com VR).
