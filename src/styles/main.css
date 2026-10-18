@@ -1674,6 +1674,31 @@ body.toolbar-hidden .cabin-enter {
   font-size: 13px;
   color: var(--muted);
 }
+.cabin-seats {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(0, 184, 255, 0.08);
+}
+.cabin-seats button {
+  padding: 8px 14px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cabin-seats button[aria-pressed="true"] {
+  color: #04121f;
+  background: rgba(0, 229, 255, 0.85);
+}
+.cabin-bar button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
 .cabin-exit {
   padding: 10px 18px;
   border: none;
@@ -1695,6 +1720,19 @@ body.in-cabin :is(.toolbar, .toolbar-restore, .vehicle-card, .callouts, .compone
   }
   .cabin-hint {
     font-size: 12px;
+  }
+  /* Com os botões de banco, a dica sai da barra (o aviso na entrada já explica o arraste). */
+  .cabin-bar:has(.cabin-seats:not([hidden])) .cabin-hint {
+    display: none;
+  }
+  .cabin-bar {
+    gap: 8px;
+    padding-left: 7px;
+  }
+  .cabin-seats button,
+  .cabin-exit {
+    padding: 9px 11px;
+    font-size: 12.5px;
   }
 }
 

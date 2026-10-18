@@ -22,7 +22,7 @@ import { SceneInstrumentation, TransformNode, Vector3 } from "./babylon.js";
 import { SHOWROOM, SIMULATION, URL_PARAMS, VEHICLE, VEHICLE_MODELS } from "./config.js";
 import { applyResolution, createCamera, createEngine, createScene, createViewController } from "./scene/createScene.js";
 import { createShowroom } from "./scene/environment.js";
-import { createCabinView, findDriverSeat } from "./scene/cabinView.js";
+import { createCabinView, findDriverSeat, findRearSeats } from "./scene/cabinView.js";
 import { createLighting } from "./scene/lighting.js";
 import { playIntro, tween } from "./scene/presentation.js";
 import { createAdaptiveQuality, detectQuality, getPreset } from "./scene/quality.js";
@@ -633,29 +633,53 @@ async function boot() {
   }
 
   // ------------------------------------------------------------------ C5) vista interna (dentro do carro)
-  // Desktop/celular: câmera própria que entra pela porta do motorista. VR: ver xr/cabinXR.js.
+  // Desktop/celular: câmera própria que entra pela porta do banco (motorista ou traseiro).
+  // VR: ver xr/cabinXR.js. Abrir a porta de trás e "Entrar no carro" leva ao banco de trás.
   let cabin = null;
   let cabinXR = null; // criado junto com o WebXR
   let ar = null; // realidade aumentada (xr/arMode.js, criado junto com o WebXR se houver suporte)
   const driverDoor = seat && doors ? doors.nearest(seat.eye) : null;
+  /** Bancos: motorista primeiro; traseiros medidos na geometria do interior (cada um com a porta ao lado). */
+  const seats = [];
+  if (vehicle && seat) {
+    seats.push({ id: "driver", label: "Motorista", eye: seat.eye, side: seat.side, door: driverDoor });
+    try {
+      const rear = findRearSeats(scene, turntable, seat, dims);
+      for (const [id, st] of [["rear-left", rear.left], ["rear-right", rear.right]]) {
+        const door = doors?.nearest(st.eye);
+        // Só se houver uma porta traseira própria (não a do motorista) ao lado do banco.
+        if (door && door !== driverDoor && !seats.some((x) => x.door === door)) seats.push({ id, label: "Banco de trás", eye: st.eye, side: st.side, door, estimated: st.estimated });
+      }
+    } catch (err) {
+      console.warn("[EV XR] Bancos traseiros não localizados:", err);
+    }
+  }
+  const rearSeats = () => seats.filter((x) => x.id !== "driver");
+  let lastRearId = null; // lado do banco de trás para o botão de troca
+  let prevCabinState = "out";
+  /** Banco por onde entrar: o da porta aberta (motorista primeiro); sem nenhuma, o motorista. */
+  const entrySeatId = () => (seats.find((x) => x.door?.isOpen) ?? seats[0]).id;
+
   if (vehicle && seat) {
     cabin = createCabinView(scene, {
       mainCamera: camera,
       canvas,
       parent: turntable,
-      seat,
+      seats,
       dims,
-      door: driverDoor,
       views,
-      onChange: (state) => {
-        hud.setCabin(state);
+      onChange: (state, seatId) => {
+        const wasEntering = prevCabinState === "entering";
+        prevCabinState = state;
+        hud.setCabin(state, { seat: seatId, rear: rearSeats().length > 0 });
+        if (seatId && seatId !== "driver") lastRearId = seatId;
         // Dentro do carro, glow e espelho da plataforma não acrescentam nada (e o brilho do anel de LED
         // apareceria por cima do painel): desligados até a saída — também poupa dois passes de renderização.
         if (state === "entering") {
           showroom.setGlowEnabled(false);
           showroom.setMirrorEnabled(false);
         }
-        if (state === "in" && !mobileUI()) hud.toast("As setas também giram o olhar · Esc sai do carro.", 3500);
+        if (state === "in" && wasEntering) hud.toast(mobileUI() ? "Arraste para olhar ao redor." : "As setas também giram o olhar · Esc sai do carro.", 3500);
         if (state === "out") {
           showroom.setGlowEnabled(quality.glow);
           showroom.setMirrorEnabled(quality.mirror);
@@ -665,7 +689,7 @@ async function boot() {
     });
   }
 
-  function enterCabin() {
+  function enterCabin(seatId) {
     if (!cabin || cabin.active || xrApi?.inXR) return;
     userTookControl = true;
     if (energy.on) setEnergy(false);
@@ -677,7 +701,15 @@ async function boot() {
     views.cancel();
     setTurntable(false);
     alignTurntable(); // a saída termina na vista inicial, com o carro de frente-esquerda
-    cabin.enter();
+    cabin.enter(seatId ?? entrySeatId());
+  }
+
+  /** Botões da barra interna: "driver" ou "rear" (banco de trás do lado por onde se entrou atrás). */
+  function switchCabinSeat(kind) {
+    if (!cabin) return;
+    const rear = rearSeats();
+    const id = kind === "driver" ? "driver" : (rear.find((x) => x.id === lastRearId) ?? rear[0])?.id;
+    if (id) cabin.switchSeat(id);
   }
 
   hud.bind({
@@ -699,6 +731,7 @@ async function boot() {
     onEscape: () => (panel.openId ? clearSelection() : energy.on && setEnergy(false)),
     onEnterVR: () => enterVR(),
     onEnterCabin: enterCabin,
+    onCabinSeat: switchCabinSeat,
     onEnterAR: () => enterAR(),
     onARAction(action) {
       if (!ar?.active) return;
@@ -891,9 +924,8 @@ async function boot() {
         cabinXR = createCabinXR(scene, {
           xrApi,
           parent: turntable,
-          seat,
+          seats,
           dims,
-          door: driverDoor,
           raycastBlockers: () => scene.meshes.filter((m) => m.metadata?.evxr),
           menuMesh: vrMenu.mesh,
           isAllowed: () => !ar?.active,
@@ -968,20 +1000,23 @@ async function boot() {
     },
     /** Abre/fecha todas as portas. */
     portas: () => toggleAllDoors(),
-    /** Entra (true) ou sai (false) do carro na vista interna. */
-    interior(on = !cabin?.active) {
-      if (on) enterCabin();
+    /** Entra (true) ou sai (false) do carro na vista interna; `banco`: "driver" | "rear-left" | "rear-right". */
+    interior(on = !cabin?.active, banco) {
+      if (on && cabin?.state === "in" && banco) cabin.switchSeat(banco);
+      else if (on) enterCabin(banco);
       else cabin?.exit();
       return cabin?.state;
     },
-    /** VR: senta no banco do motorista (true) ou sai do carro (false). */
-    sentarVR(on = !cabinXR?.seated) {
-      if (on) cabinXR?.enter();
+    /** VR: senta (true) ou sai do carro (false); `banco` como em interior(). */
+    sentarVR(on = !cabinXR?.seated, banco) {
+      if (on && cabinXR?.seated) cabinXR.switchSeat(banco);
+      else if (on) cabinXR?.enter(banco);
       else cabinXR?.exit();
-      return cabinXR?.seated;
+      return cabinXR?.seat;
     },
-    /** Banco do motorista detectado (local do prato). */
+    /** Bancos detectados (local do prato): olhos e lado da porta. */
     banco: () => seat && { olhos: seat.eye.asArray().map((v) => +v.toFixed(3)), lado: seat.side, volante: seat.steering?.asArray().map((v) => +v.toFixed(3)) },
+    bancos: () => seats.map((x) => ({ id: x.id, olhos: x.eye.asArray().map((v) => +v.toFixed(3)), lado: x.side, estimado: !!x.estimated })),
     /** Liga/desliga o fluxo de energia; `aba`: "accel" | "regen" | "charge". */
     energia(on = !energy.on, aba) {
       setEnergy(on);

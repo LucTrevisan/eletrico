@@ -29,6 +29,7 @@ export { Constants } from "@babylonjs/core/Engines/constants.js";
 export { Scene } from "@babylonjs/core/scene.js";
 export { Color3, Color4 } from "@babylonjs/core/Maths/math.color.js";
 export { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+export { Ray } from "@babylonjs/core/Culling/ray.js";
 export { Plane } from "@babylonjs/core/Maths/math.plane.js";
 export { Curve3, Path3D } from "@babylonjs/core/Maths/math.path.js";
 export { Axis, Space } from "@babylonjs/core/Maths/math.axis.js";

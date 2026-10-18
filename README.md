@@ -88,6 +88,17 @@ gatilho. Controles/mãos são detectados sozinhos e as dicas do painel mudam con
   `evxr.sentarVR()` entram/saem para testes. Código: `src/scene/cabinView.js` e `src/xr/cabinXR.js` (este só é
   baixado em dispositivos com VR).
 
+### Banco de trás
+
+Abra uma **porta traseira** (clique, toque, gatilho ou pinça) e use **Entrar no carro**: você senta no banco de trás
+daquele lado, de frente para os encostos dianteiros, com o painel e a central multimídia ao fundo e o teto solar
+acima. Lá dentro, **Motorista / Banco de trás** troca de lugar passando entre os encostos (no VR, o botão "Banco de
+trás"/"Banco do motorista" fica ao lado de "Sair do carro"). Sai-se pela porta do banco atual.
+
+Os bancos traseiros são medidos na geometria real do interior (raios verticais atrás do motorista acham o assoalho,
+o assento e o encosto traseiros); `evxr.bancos()` mostra as posições e `evxr.interior(true, "rear-left")` /
+`evxr.sentarVR(true, "rear-right")` entram direto num banco.
+
 ## Realidade aumentada (RA)
 
 O botão **Entrar em RA** aparece só onde há suporte a `immersive-ar`: **Meta Quest** (passthrough — você vê a sala

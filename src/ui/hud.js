@@ -144,6 +144,9 @@ export function createHud() {
   new ResizeObserver(() => document.body.style.setProperty("--ar-bar-h", `${el.arBar.offsetHeight}px`)).observe(el.arBar);
   for (const b of el.arBar.querySelectorAll("[data-ar]")) b.addEventListener("click", () => handlers.onARAction?.(b.dataset.ar));
   el.cabinExit.addEventListener("click", () => handlers.onExitCabin?.());
+  const seatGroup = el.cabinBar.querySelector(".cabin-seats");
+  const seatButtons = [...el.cabinBar.querySelectorAll("[data-seat]")];
+  for (const b of seatButtons) b.addEventListener("click", () => handlers.onCabinSeat?.(b.dataset.seat));
 
   const viewKeys = { 0: "hero", 1: "front", 2: "side", 3: "rear", 4: "top" };
   window.addEventListener("keydown", (e) => {
@@ -316,11 +319,21 @@ export function createHud() {
       el.cabinEnter.hidden = !on;
       if (on) dismissHint(); // ocupam o mesmo lugar, acima da barra
     },
-    /** state: "out" | "entering" | "in" | "leaving". */
-    setCabin(state) {
+    /**
+     * state: "out" | "entering" | "in" | "moving" | "leaving".
+     * seat: banco atual (id); rear: há banco de trás (mostra os botões Motorista / Banco de trás).
+     */
+    setCabin(state, { seat = null, rear = false } = {}) {
       inCabin = state !== "out";
       document.body.classList.toggle("in-cabin", inCabin);
-      el.cabinBar.hidden = state !== "in";
+      el.cabinBar.hidden = state !== "in" && state !== "moving";
+      seatGroup.hidden = !rear;
+      const kind = seat && seat !== "driver" ? "rear" : "driver";
+      for (const b of seatButtons) {
+        b.setAttribute("aria-pressed", String(b.dataset.seat === kind));
+        b.disabled = state !== "in"; // durante a troca de banco
+      }
+      el.cabinExit.disabled = state !== "in";
       if (inCabin) {
         el.cabinEnter.hidden = true;
         el.tooltip.hidden = true;

@@ -1,4 +1,4 @@
-import { ArcRotateCamera, Vector3 } from "../babylon.js";
+import { ArcRotateCamera, Ray, Vector3 } from "../babylon.js";
 import { easeInOutCubic, tween } from "./presentation.js";
 
 const STEERING = /steering|volante/i;
@@ -31,14 +31,71 @@ export function findDriverSeat(vehicle, parent, dims) {
 }
 
 /**
- * VISTA INTERNA (desktop e celular): a câmera entra pela porta do motorista, senta no banco e
- * permite olhar ao redor arrastando (mouse ou dedo). Usa uma câmera própria — a câmera orbital do
- * showroom não é alterada e volta exatamente à vista inicial na saída.
- *
- *  enter()/exit()  animações de entrada e saída (a porta abre/fecha junto)
- *  exitNow()       volta na hora (ex.: antes de entrar em VR)
+ * Bancos traseiros (local do prato), medidos na geometria real com raios verticais atrás do
+ * motorista: depois do encosto dianteiro vêm o assoalho traseiro (baixo), o assento (patamar) e o
+ * encosto traseiro (sobe). Os olhos ficam um pouco à frente do encosto, na altura do motorista
+ * corrigida pela diferença entre os assentos, e abaixo do forro do teto.
+ * Sem leitura confiável, usa ~0,9 m atrás do motorista. Devolve { left, right } (lado −1 / +1).
  */
-export function createCabinView(scene, { mainCamera, canvas, parent, seat, dims, door, views, onChange }) {
+export function findRearSeats(scene, parent, driver, dims) {
+  const W = parent.getWorldMatrix();
+  const inv = W.clone().invert();
+  const isInterior = (m) => m.metadata?.evxr?.component === "interior" && m.isEnabled();
+  const isCar = (m) => !!m.metadata?.evxr?.vehicle && !m.metadata.evxr.illustrative && m.isEnabled();
+  const down = Vector3.TransformNormal(new Vector3(0, -1, 0), W).normalize();
+  const up = down.scale(-1);
+  const cast = (x, y, z, dir, predicate) => {
+    const origin = Vector3.TransformCoordinates(new Vector3(x, y, z), W);
+    const hit = scene.pickWithRay(new Ray(origin, dir, 2), predicate);
+    return hit?.hit ? Vector3.TransformCoordinates(hit.pickedPoint, inv).y : null;
+  };
+  const x = driver.eye.x;
+  const startY = driver.eye.y + 0.1;
+  const heightAt = (z) => cast(x, startY, z, down, isInterior);
+
+  // Assento dianteiro (calibração): menor altura logo abaixo/à frente dos olhos do motorista.
+  let front = Infinity;
+  for (let z = driver.eye.z - 0.05; z <= driver.eye.z + 0.35; z += 0.05) front = Math.min(front, heightAt(z) ?? Infinity);
+
+  let footwell = false;
+  let cushion = Infinity;
+  let backZ = null;
+  if (Number.isFinite(front)) {
+    for (let z = driver.eye.z - 0.25; z > -dims.length * 0.45; z -= 0.05) {
+      const h = heightAt(z);
+      if (h == null) continue;
+      if (!footwell) {
+        footwell = h < front - 0.12;
+      } else if (cushion === Infinity || h <= cushion + 0.18) {
+        if (h >= front - 0.12 && h <= front + 0.25) cushion = Math.min(cushion, h);
+      } else {
+        backZ = z; // o encosto traseiro começa aqui
+        break;
+      }
+    }
+  }
+  const make = (side) => {
+    const sx = side * Math.abs(x);
+    if (backZ == null) return { eye: new Vector3(sx, driver.eye.y, driver.eye.z - 0.9), side, estimated: true };
+    const eye = new Vector3(sx, driver.eye.y + (cushion - front), backZ + 0.13);
+    const roof = cast(sx, eye.y - 0.3, eye.z, up, isCar);
+    if (roof != null) eye.y = Math.min(eye.y, roof - 0.12); // cabeça abaixo do forro do teto
+    return { eye, side };
+  };
+  return { left: make(-1), right: make(1) };
+}
+
+/**
+ * VISTA INTERNA (desktop e celular): a câmera entra pela porta de um banco (motorista ou traseiro),
+ * senta e permite olhar ao redor arrastando (mouse ou dedo). Usa uma câmera própria — a câmera
+ * orbital do showroom não é alterada e volta exatamente à vista inicial na saída.
+ *
+ *  seats           [{ id, eye, side, door }] — eye no referencial do carro; door = { isOpen, set(open) }
+ *  enter(id)       entra pela porta daquele banco (a porta abre/fecha junto)
+ *  switchSeat(id)  muda de banco por dentro da cabine (entre os encostos)
+ *  exit()          sai pela porta do banco atual; exitNow() volta na hora (ex.: antes de entrar em VR)
+ */
+export function createCabinView(scene, { mainCamera, canvas, parent, seats, dims, views, onChange }) {
   const cam = new ArcRotateCamera("cabin-camera", -Math.PI / 2, Math.PI / 2, 0.02, Vector3.Zero(), scene);
   cam.minZ = 0.02; // painel e volante ficam a poucos centímetros
   cam.maxZ = 250;
@@ -49,16 +106,26 @@ export function createCabinView(scene, { mainCamera, canvas, parent, seat, dims,
   cam.angularSensibilityY = -2200;
   cam.pinchToPanMaxDistance = 0;
 
-  let state = "out"; // out | entering | in | leaving
+  let state = "out"; // out | entering | in | moving | leaving
+  let seat = seats[0];
+  let door = seat.door;
   let doorWasOpen = false;
   // O voo é calculado no referencial do carro (prato) e convertido a cada quadro: se a plataforma
   // ainda estiver se alinhando, o trajeto acompanha o carro em vez de atravessá-lo.
   const toWorld = (v) => Vector3.TransformCoordinates(v, parent.getWorldMatrix());
   const toLocal = (v) => Vector3.TransformCoordinates(v, parent.getWorldMatrix().clone().invert());
-  const forward = () => Vector3.TransformNormal(new Vector3(0, 0, 1), parent.getWorldMatrix()).normalize();
   const FWD = new Vector3(0, 0, 1);
-  // Ponto do lado de fora da porta do motorista, na altura dos olhos (local).
-  const outside = seat.eye.add(new Vector3(seat.side * (dims.width / 2 + 0.95), 0.05, 0.1));
+  // Ponto do lado de fora da porta do banco, na altura dos olhos (local).
+  const outsideOf = (st) => st.eye.add(new Vector3(st.side * (dims.width / 2 + 0.95), 0.05, 0.1));
+  const seatById = (id) => seats.find((x) => x.id === id) ?? seats[0];
+  // Olhar inicial (local): motorista reto para o painel; banco de trás um pouco para o centro, para o
+  // apoio de cabeça da frente não tampar a vista do painel.
+  // No celular em pé (campo horizontal estreito), gira mais para o centro.
+  const lookOf = (st) => {
+    if (st.id === "driver") return FWD;
+    const inward = canvas.clientWidth < canvas.clientHeight ? 0.42 : 0.22;
+    return new Vector3(-st.side * inward, -0.04, 1).normalize();
+  };
 
   const setLimits = (free) => {
     cam.lowerRadiusLimit = free ? null : 0.02;
@@ -92,10 +159,22 @@ export function createCabinView(scene, { mainCamera, canvas, parent, seat, dims,
     );
   }
 
-  async function enter() {
+  /** Olhar ao redor: pivô nos olhos (raio de 2 cm), de frente para o painel. */
+  function sitDown() {
+    const eye = toWorld(seat.eye);
+    const look = Vector3.TransformNormal(lookOf(seat), parent.getWorldMatrix()).normalize();
+    cam.setTarget(eye);
+    cam.setPosition(eye.subtract(look.scale(0.02)));
+    setLimits(false);
+    cam.attachControl(canvas, true);
+  }
+
+  async function enter(id) {
     if (state !== "out") return;
+    seat = seatById(id);
+    door = seat.door;
     state = "entering";
-    onChange?.(state);
+    onChange?.(state, seat.id);
     doorWasOpen = !!door?.isOpen;
     door?.set(true);
     setLimits(true);
@@ -106,23 +185,41 @@ export function createCabinView(scene, { mainCamera, canvas, parent, seat, dims,
     scene.activeCamera = cam;
     await fly({
       from: toLocal(cam.position),
-      via: outside,
+      via: outsideOf(seat),
       to: seat.eye,
       lookFrom: toLocal(cam.target),
-      lookTo: seat.eye.add(FWD.scale(0.6)),
+      lookTo: seat.eye.add(lookOf(seat).scale(0.6)),
       fovTo: cabinFov(),
       duration: 2300,
     });
     if (state !== "entering") return; // saída imediata durante a animação
-    // Olhar ao redor: pivô nos olhos (raio de 2 cm), de frente para o painel.
-    const eye = toWorld(seat.eye);
-    cam.setTarget(eye);
-    cam.setPosition(eye.subtract(forward().scale(0.02)));
-    setLimits(false);
-    cam.attachControl(canvas, true);
+    sitDown();
     door?.set(false); // fecha a porta: imersão dentro da cabine
     state = "in";
-    onChange?.(state);
+    onChange?.(state, seat.id);
+  }
+
+  /** Troca de banco por dentro: passa por cima do console, entre os encostos dianteiros. */
+  async function switchSeat(id) {
+    const next = seatById(id);
+    if (state !== "in" || next === seat) return;
+    state = "moving";
+    onChange?.(state, next.id);
+    cam.detachControl();
+    const dir = cam.target.subtract(cam.position).normalize();
+    const eye = cam.target.clone();
+    setLimits(true);
+    cam.setTarget(eye.add(dir.scale(0.6)));
+    cam.setPosition(eye);
+    const from = seat.eye;
+    const via = new Vector3(0, Math.max(from.y, next.eye.y) + 0.08, (from.z + next.eye.z) / 2);
+    seat = next;
+    door = seat.door;
+    await fly({ from, via, to: next.eye, lookFrom: toLocal(cam.target), lookTo: next.eye.add(lookOf(next).scale(0.6)), fovTo: cam.fov, duration: 1300 });
+    if (state !== "moving") return;
+    sitDown();
+    state = "in";
+    onChange?.(state, seat.id);
   }
 
   /** Pose final da câmera do showroom na vista inicial (sem mexer nela enquanto está inativa). */
@@ -156,7 +253,7 @@ export function createCabinView(scene, { mainCamera, canvas, parent, seat, dims,
     const hero = heroPose();
     await fly({
       from: seat.eye,
-      via: outside,
+      via: outsideOf(seat),
       to: toLocal(hero.position),
       lookFrom: toLocal(cam.target),
       lookTo: toLocal(hero.target),
@@ -177,7 +274,12 @@ export function createCabinView(scene, { mainCamera, canvas, parent, seat, dims,
     get active() {
       return state !== "out";
     },
+    /** Banco atual (id). */
+    get seat() {
+      return seat.id;
+    },
     enter,
+    switchSeat,
     exit,
     exitNow() {
       if (state === "out") return;
