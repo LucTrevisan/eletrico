@@ -15,7 +15,7 @@ const FONT = "'Segoe UI', Roboto, Arial, sans-serif";
  * bloqueado pela carroceria — sai-se pelo botão ou por "Voltar ao início".
  * Carregado sob demanda, só em dispositivos com VR.
  */
-export function createCabinXR(scene, { xrApi, parent, seat, dims, door, raycastBlockers, menuMesh, onSeatedChange }) {
+export function createCabinXR(scene, { xrApi, parent, seat, dims, door, raycastBlockers, menuMesh, onSeatedChange, isAllowed }) {
   const world = (v) => Vector3.TransformCoordinates(v, parent.getWorldMatrix());
   const forward = () => Vector3.TransformNormal(new Vector3(0, 0, 1), parent.getWorldMatrix()).normalize();
 
@@ -45,7 +45,8 @@ export function createCabinXR(scene, { xrApi, parent, seat, dims, door, raycastB
         /* quadro indisponível: mantém a última leitura */
       }
     }
-    const want = xrApi.inXR && !seated && !!door?.isOpen;
+    // Em RA não: lá se entra no carro andando de verdade (mover o usuário desalinharia o carro do chão real).
+    const want = xrApi.inXR && !seated && !!door?.isOpen && (isAllowed?.() ?? true);
     if (want) {
       const at = world(new Vector3(seat.side * (dims.width / 2 + 0.55), 1.15, seat.eye.z + 0.15));
       const viewer = world(new Vector3(seat.side * (dims.width / 2 + 1.6), 1.5, seat.eye.z));

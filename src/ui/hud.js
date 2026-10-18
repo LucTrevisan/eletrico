@@ -45,6 +45,10 @@ export function createHud() {
     componentPanel: $("componentPanel"),
     energyPanel: $("energyPanel"),
     cabinEnter: $("cabinEnter"),
+    arButton: $("arButton"),
+    arBar: $("arBar"),
+    arStatus: $("arStatus"),
+    arScale: $("arScale"),
     cabinBar: $("cabinBar"),
     cabinExit: $("cabinExit"),
   };
@@ -134,6 +138,11 @@ export function createHud() {
   // Vista interna (dentro do carro): só a saída fica na tela; os atalhos esperam a volta (exceto Esc).
   let inCabin = false;
   el.cabinEnter.addEventListener("click", () => handlers.onEnterCabin?.());
+  // Realidade aumentada: botão de entrada e barra do celular (sobreposição HTML sobre a câmera).
+  el.arButton.addEventListener("click", () => handlers.onEnterAR?.());
+  // Os painéis da RA se apoiam na barra: a altura dela (1 ou 2 linhas de texto) vira variável CSS.
+  new ResizeObserver(() => document.body.style.setProperty("--ar-bar-h", `${el.arBar.offsetHeight}px`)).observe(el.arBar);
+  for (const b of el.arBar.querySelectorAll("[data-ar]")) b.addEventListener("click", () => handlers.onARAction?.(b.dataset.ar));
   el.cabinExit.addEventListener("click", () => handlers.onExitCabin?.());
 
   const viewKeys = { 0: "hero", 1: "front", 2: "side", 3: "rear", 4: "top" };
@@ -271,6 +280,34 @@ export function createHud() {
     setCredit(text) {
       el.vehicleCredit.textContent = text ?? "";
       el.vehicleCredit.hidden = !text;
+    },
+
+    /** Botão "Entrar em RA" (só com suporte a immersive-ar). */
+    setARAvailable(on) {
+      el.arButton.hidden = !on;
+    },
+    /** Sessão de RA: `overlay` = celular (barra HTML sobre a câmera). */
+    setAR(active, { overlay = false } = {}) {
+      document.body.classList.toggle("in-ar", active && overlay);
+      el.arBar.hidden = !(active && overlay);
+    },
+    /** Durante qualquer sessão (VR ou RA) o botão de RA some, como o de VR. */
+    setXRSession(on) {
+      if (on) {
+        el.arButton.dataset.wasVisible = String(!el.arButton.hidden);
+        el.arButton.hidden = true;
+      } else if (el.arButton.dataset.wasVisible === "true") el.arButton.hidden = false;
+    },
+    setARStatus(text) {
+      if (el.arStatus.textContent !== text) el.arStatus.textContent = text;
+    },
+    /** Estado dos botões da barra de RA. */
+    setARState({ xray, energy, explode, scale }) {
+      const set = (k, v) => el.arBar.querySelector(`[data-ar="${k}"]`)?.setAttribute("aria-pressed", String(!!v));
+      if (xray !== undefined) set("xray", xray);
+      if (energy !== undefined) set("energy", energy);
+      if (explode !== undefined) set("explode", explode);
+      if (scale !== undefined) el.arScale.textContent = scale === 1 ? "Maquete 1:4" : "Tamanho real";
     },
 
     /** Botão "Entrar no carro" (aparece com uma porta aberta). */

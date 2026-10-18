@@ -88,6 +88,27 @@ gatilho. Controles/mãos são detectados sozinhos e as dicas do painel mudam con
   `evxr.sentarVR()` entram/saem para testes. Código: `src/scene/cabinView.js` e `src/xr/cabinXR.js` (este só é
   baixado em dispositivos com VR).
 
+## Realidade aumentada (RA)
+
+O botão **Entrar em RA** aparece só onde há suporte a `immersive-ar`: **Meta Quest** (passthrough — você vê a sala
+real) e **celulares Android com Chrome** (câmera + ARCore). No iPhone o Safari não oferece WebXR.
+
+1. Ao entrar, o showroom some e fica só o carro (com a sombra de contato). Um **retículo** com a pegada do carro
+   acompanha o chão detectado — no celular, aponte a câmera para o chão e mova devagar; no Quest, olhe para o chão
+   (sem mapeamento da sala, o retículo vai para o piso à sua frente).
+2. **Toque na tela** (celular) ou **gatilho/pinça** (Quest) para posicionar o carro em **tamanho real**, de
+   frente-esquerda para você. Depois é só andar ao redor — e para dentro dele.
+3. Raio X, fluxo de energia, vista explodida, portas e informações das peças funcionam como no VR.
+   **Reposicionar** recomeça o passo 1 e **Maquete 1:4** reduz o carro (≈ 1,2 m) para salas pequenas ou mesas.
+
+- **Celular:** uma barra própria sobre a câmera (WebXR DOM Overlay) com Reposicionar, Maquete, Raio X, Energia,
+  Explodir, Portas e Sair da RA; os painéis de peça e de energia aparecem em HTML acima dela.
+- **Quest:** o mesmo painel 3D do VR, com "Reposicionar carro" e "Sair da RA", e um botão de escala logo abaixo.
+- Em RA não há teleporte (anda-se de verdade) nem o "Entrar no carro" automático: mover o usuário desalinharia o
+  carro do chão real.
+- Código: `src/xr/arMode.js` (2,6 KB, baixado só onde há suporte). Hit-test e DOM Overlay são pedidos só na sessão
+  de RA; a sessão VR continua igual.
+
 ## Fluxo de energia e simulação
 
 Botão **Energia** (tecla **E**, ou no painel 3D em VR). O raio X liga sozinho e o caminho da energia aparece
@@ -270,6 +291,7 @@ src/
 ├── xr/
 │   ├── support.js          detecção de suporte a VR (sem Babylon: entra no pacote inicial)
 │   ├── cabinXR.js          VR: sentar no banco do motorista e sair do carro (sob demanda)
+│   ├── arMode.js           realidade aumentada: posicionar o carro no ambiente real (sob demanda)
 │   ├── xrExperience.js     WebXR (sob demanda): entrada em VR, teleporte, snap turn, mãos, ponto de partida
 │   └── interactions.js     botões B/Y e menu de pulso (mãos) para chamar o painel
 ├── ui/

@@ -43,7 +43,7 @@ import { createXRayMode } from "./vehicle/xrayMode.js";
 import { createComponentCallouts } from "./ui/componentCallouts.js";
 import { createComponentLabels, createFloatingLabels } from "./ui/componentLabels.js";
 import { createComponentPanel } from "./ui/componentPanel.js";
-import { checkVRSupport } from "./xr/support.js";
+import { checkARSupport, checkVRSupport } from "./xr/support.js";
 import { createHud } from "./ui/hud.js";
 import { createEnergyPanel } from "./ui/energyPanel.js";
 import { createEnergyFlow } from "./simulation/energyFlow.js";
@@ -118,6 +118,8 @@ async function boot() {
   const dims = vehicle?.dims ?? { length: VEHICLE.referenceLength, width: 1.86, height: 1.7 };
   const views = createViewController(scene, camera, dims, SHOWROOM.platformHeight);
   const showroom = createShowroom(scene, quality, { dims, turntable, vehicle, spawnAlpha: views.views.hero.alpha });
+  // Realidade aumentada: o showroom inteiro some (fica o carro e a sombra de contato sob ele).
+  const arHiddenMeshes = scene.meshes.filter((m) => !m.metadata?.evxr && m.name !== "contact-shadow" && m.name !== "scan-ring");
   if (vehicle) lighting.attachVehicle(vehicle.meshes, [showroom.platformTop, showroom.floor]);
   hud.setVehicle(vehicle?.info);
 
@@ -132,10 +134,11 @@ async function boot() {
   }
 
   /** Para o prato e o devolve suavemente à orientação original (frente para +Z). */
+  let turntableBaseYaw = 0; // RA: orientação em que o usuário posicionou o carro
   function alignTurntable(duration = 1100) {
     showroom.turntable.halt();
     const from = turntable.rotation.y;
-    const to = Math.round(from / (Math.PI * 2)) * Math.PI * 2;
+    const to = turntableBaseYaw + Math.round((from - turntableBaseYaw) / (Math.PI * 2)) * Math.PI * 2;
     if (Math.abs(to - from) < 1e-3) return;
     tween(scene, { duration, onUpdate: (t) => (turntable.rotation.y = from + (to - from) * t) });
   }
@@ -296,6 +299,7 @@ async function boot() {
   function selectComponent(id, mesh) {
     const item = componentItems[id];
     if (!item || !selection || cabin?.active || cabinXR?.seated) return; // dentro do carro: só olhar ao redor
+    if (ar?.consumePlacementTap()) return; // RA: soltar o toque que posicionou o carro não seleciona peça
     userTookControl = true;
     // Portas: o clique (mouse, toque, gatilho ou pinça) abre/fecha a porta clicada.
     if (id === "portas" && doors && mesh && !mesh.metadata?.evxr?.labelFor && !explode?.exploded) {
@@ -315,7 +319,7 @@ async function boot() {
     labels?.setActive(id);
     explodeLabels?.setActive(id);
     const world = currentWorldCenter(item, mesh);
-    if (xrApi?.inXR) {
+    if (xrApi?.inXR && !xrApi.domOverlay) {
       panel.showVR(id, content, { illustrative: item.illustrative, actions, camera: xrApi.camera, target: world });
       return;
     }
@@ -326,7 +330,7 @@ async function boot() {
     panel.showDesktop(id, content, { illustrative: item.illustrative, actions, collapsed: peek });
     const size = Math.max(item.size.x, item.size.y, item.size.z);
     // Peças do tamanho do carro (carroceria, portas, rodas) não pedem aproximação.
-    if (!peek && size < Math.min(2.6, dims.length * 0.55)) {
+    if (!peek && !xrApi?.inXR && size < Math.min(2.6, dims.length * 0.55)) {
       hud.setActiveView(null);
       views.setScreenInsets(hud.getInsets()); // o painel acabou de abrir: a área livre já muda
       views.focusOn(world, size, { maxBeta: INTERNAL_COMPONENTS.includes(id) ? 0.78 : null });
@@ -475,8 +479,8 @@ async function boot() {
       alignTurntable(); // carregador externo alinhado com a porta de recarga
       applyEnergyMode();
       energyPanel.update(sim.snapshot());
-      if (xrApi?.inXR) energyPanel.showVR(xrApi.camera);
-      else energyPanel.showDesktop();
+      if (xrApi?.inXR && !xrApi.domOverlay) energyPanel.showVR(xrApi.camera);
+      else energyPanel.showDesktop(); // inclui o celular em RA (painel HTML sobre a câmera)
       if (energy.tab === "charge") frameCharging();
       else if (portraitUI()) frameDriving();
       else if (!xrApi?.inXR && views.current == null) views.flyTo("hero"); // vinha do zoom numa peça: o fluxo percorre o carro todo
@@ -632,6 +636,7 @@ async function boot() {
   // Desktop/celular: câmera própria que entra pela porta do motorista. VR: ver xr/cabinXR.js.
   let cabin = null;
   let cabinXR = null; // criado junto com o WebXR
+  let ar = null; // realidade aumentada (xr/arMode.js, criado junto com o WebXR se houver suporte)
   const driverDoor = seat && doors ? doors.nearest(seat.eye) : null;
   if (vehicle && seat) {
     cabin = createCabinView(scene, {
@@ -694,6 +699,18 @@ async function boot() {
     onEscape: () => (panel.openId ? clearSelection() : energy.on && setEnergy(false)),
     onEnterVR: () => enterVR(),
     onEnterCabin: enterCabin,
+    onEnterAR: () => enterAR(),
+    onARAction(action) {
+      if (!ar?.active) return;
+      if (action === "reposition") ar.reposition();
+      else if (action === "scale") ar.toggleScale();
+      else if (action === "xray") toggleXRay();
+      else if (action === "energy") setEnergy(!energy.on);
+      else if (action === "explode") setExploded(!explode?.exploded);
+      else if (action === "doors") toggleAllDoors();
+      else if (action === "exit") xrApi?.exit();
+      syncARBar();
+    },
     onExitCabin: () => cabin?.exit(),
   });
   hud.setCredit(vehicle?.model.credit);
@@ -704,7 +721,12 @@ async function boot() {
     hud.setCabinAvailable(
       !!cabin && cabin.state === "out" && !!doors?.anyOpen && !explode?.exploded && !energy.on && !xrApi?.inXR,
     );
+    syncARBar();
   }, 250);
+  /** Barra de RA do celular: estado dos botões (também chamado logo após cada ação). */
+  function syncARBar() {
+    if (ar?.active) hud.setARState({ xray: !!xray?.on, energy: energy.on, explode: !!explode?.exploded, scale: ar.scale });
+  }
   // Ao arrastar/zoom manual, nenhuma vista predefinida fica marcada como ativa.
   for (const type of ["pointerdown", "wheel"]) {
     canvas.addEventListener(type, () => hud.setActiveView(null), { passive: true });
@@ -731,6 +753,17 @@ async function boot() {
 
   // ------------------------------------------------------------------ D) WebXR
   let spinBeforeXR = false;
+
+  async function enterAR() {
+    if (!ar || xrApi?.inXR) return;
+    cabin?.exitNow();
+    try {
+      await ar.enter();
+    } catch (err) {
+      console.error(err);
+      hud.toast(`Não foi possível entrar em RA: ${err?.message || err}`, 5000);
+    }
+  }
 
   async function enterVR() {
     if (!xrApi) return;
@@ -763,10 +796,28 @@ async function boot() {
       energyPanel.showVR(xrApi.camera);
     }
     hud.setVR("in-xr");
+    hud.setXRSession(true);
+    if (xrApi.isAR) onEnterAR();
+  }
+
+  /** Complementa onEnterXR na realidade aumentada (o resto da sessão é igual à VR). */
+  function onEnterAR() {
+    ar.onEnter();
+    hud.setAR(true, { overlay: xrApi.domOverlay });
+    if (xrApi.domOverlay && energy.on) {
+      energyPanel.hideVR();
+      energyPanel.showDesktop();
+    }
   }
 
   function onExitXR() {
+    if (ar?.active) {
+      ar.onExit();
+      hud.setAR(false);
+      turntableBaseYaw = 0;
+    }
     cabinXR?.reset();
+    hud.setXRSession(false);
     clearSelection();
     labels?.refresh(); // de volta às legendas em tela
     explodeLabels?.refresh();
@@ -796,6 +847,7 @@ async function boot() {
         onToggleExplode: () => setExploded(!explode?.exploded),
         onToggleTurntable: toggleTurntable,
         onReturnToSpawn: () => {
+          if (ar?.active) return ar.reposition(); // RA: o botão vira "Reposicionar carro"
           cabinXR?.reset(); // sentado no carro: volta a ficar em pé
           xrApi?.returnToSpawn();
         },
@@ -810,16 +862,17 @@ async function boot() {
     return vrMenuPromise;
   }
 
-  const support = await checkVRSupport();
-  if (!support.supported) {
+  const [support, arSupport] = await Promise.all([checkVRSupport(), checkARSupport()]);
+  if (!support.supported && !arSupport.supported) {
     hud.setVR("unavailable", support.reason);
   } else {
     try {
-      // WebXR e o painel 3D (Babylon GUI) só são baixados aqui, em dispositivos com VR.
-      const [{ createXRExperience }, { setupXRInteractions }, { createCabinXR }] = await Promise.all([
+      // WebXR e o painel 3D (Babylon GUI) só são baixados aqui, em dispositivos com VR ou RA.
+      const [{ createXRExperience }, { setupXRInteractions }, { createCabinXR }, arModule] = await Promise.all([
         import("./xr/xrExperience.js"),
         import("./xr/interactions.js"),
         import("./xr/cabinXR.js"),
+        arSupport.supported ? import("./xr/arMode.js") : null,
         ensureVRMenu(),
       ]);
       xrApi = await createXRExperience(scene, {
@@ -843,6 +896,7 @@ async function boot() {
           door: driverDoor,
           raycastBlockers: () => scene.meshes.filter((m) => m.metadata?.evxr),
           menuMesh: vrMenu.mesh,
+          isAllowed: () => !ar?.active,
           onSeatedChange: (on) => {
             if (!on) return;
             clearSelection();
@@ -851,7 +905,29 @@ async function boot() {
           },
         });
       }
-      hud.setVR("available");
+      if (arModule) {
+        ar = arModule.createARMode(scene, {
+          xrApi,
+          turntable,
+          dims,
+          hiddenMeshes: arHiddenMeshes,
+          overlayRoot: document.getElementById("hud"),
+          vrMenu,
+          onPlacedChange(placed, yaw) {
+            turntableBaseYaw = placed ? yaw : 0;
+            if (!placed) clearSelection(); // reposicionando: o carro some até o novo toque
+            if (placed && !xrApi.domOverlay) vrMenu.setTurntableState(showroom.turntable.spinning);
+          },
+          onScaleChange: () => syncARBar(),
+          onStatus(text) {
+            hud.setARStatus(text);
+            if (!xrApi.domOverlay && !ar?.placed) vrMenu.setStatus(text); // Quest: dica no painel 3D
+          },
+        });
+      }
+      // Botões: VR só com suporte a VR (o celular com ARCore pode ter só RA).
+      hud.setVR(support.supported ? "available" : "unavailable", support.reason);
+      hud.setARAvailable(!!ar);
     } catch (err) {
       console.warn("[EV XR] WebXR indisponível:", err);
       xrApi = null;

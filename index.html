@@ -39,6 +39,13 @@
             </svg>
             Entrar em VR
           </button>
+          <button id="arButton" class="btn btn-ar" type="button" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3" />
+              <path d="M12 7.5 16.5 10v5L12 17.5 7.5 15v-5z" />
+            </svg>
+            Entrar em RA
+          </button>
         </div>
       </header>
 
@@ -195,6 +202,19 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 17h14M6 17l1.2-5.2A2 2 0 0 1 9.15 10h5.7a2 2 0 0 1 1.95 1.8L18 17M8 17v2M16 17v2M9 13.5h6" /></svg>
         Entrar no carro
       </button>
+      <!-- Realidade aumentada no celular (WebXR DOM Overlay): única barra visível sobre a câmera. -->
+      <div id="arBar" class="ar-bar" hidden>
+        <p id="arStatus" class="ar-status" role="status" aria-live="polite"></p>
+        <div class="ar-actions">
+          <button type="button" data-ar="reposition">Reposicionar</button>
+          <button type="button" data-ar="scale" id="arScale">Maquete 1:4</button>
+          <button type="button" data-ar="xray" aria-pressed="false">Raio X</button>
+          <button type="button" data-ar="energy" aria-pressed="false">Energia</button>
+          <button type="button" data-ar="explode" aria-pressed="false">Explodir</button>
+          <button type="button" data-ar="doors">Portas</button>
+          <button type="button" data-ar="exit" class="ar-exit">Sair da RA</button>
+        </div>
+      </div>
       <div id="cabinBar" class="cabin-bar" hidden>
         <span class="cabin-hint">Arraste para olhar ao redor</span>
         <button id="cabinExit" class="cabin-exit" type="button">Sair do carro</button>
@@ -226,6 +246,7 @@
           <li><b>Gatilho</b>: seleciona peças e aciona os botões do painel 3D</li>
           <li><b>B ou Y</b>: traz o painel de controle para perto</li>
           <li>Abra a <b>porta do motorista</b> e aponte para <b>Entrar no carro</b>: você senta ao volante; <b>Sair do carro</b> fica junto à porta</li>
+          <li><b>Entrar em RA</b> (Quest ou celular Android): o carro aparece no ambiente real — olhe para o chão e aperte o gatilho (ou toque na tela) para posicioná-lo; depois ande ao redor</li>
         </ul>
         <h4>Meta Quest (mãos)</h4>
         <ul>

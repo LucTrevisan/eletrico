@@ -16,3 +16,13 @@ export async function checkVRSupport() {
     return { supported: false, reason: `WebXR indisponível: ${err?.message || err}` };
   }
 }
+
+/** Realidade aumentada (Quest com passthrough, Chrome no Android com ARCore). Nunca lança exceção. */
+export async function checkARSupport() {
+  if (!window.isSecureContext || !("xr" in navigator)) return { supported: false };
+  try {
+    return { supported: await navigator.xr.isSessionSupported("immersive-ar") };
+  } catch {
+    return { supported: false };
+  }
+}

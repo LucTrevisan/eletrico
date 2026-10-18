@@ -190,6 +190,28 @@ button {
   stroke-width: 1.8;
 }
 
+.btn-ar {
+  border: 1px solid var(--orange);
+  color: var(--text);
+  font-weight: 700;
+  background: rgba(255, 159, 67, 0.14);
+  box-shadow: 0 6px 22px rgba(255, 159, 67, 0.22);
+}
+
+.btn-ar:hover {
+  background: rgba(255, 159, 67, 0.26);
+  transform: translateY(-1px);
+}
+
+.btn-ar svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: var(--orange);
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+}
+
 .btn-ghost {
   background: transparent;
   border-color: rgba(245, 247, 250, 0.2);
@@ -1674,6 +1696,70 @@ body.in-cabin :is(.toolbar, .toolbar-restore, .vehicle-card, .callouts, .compone
   .cabin-hint {
     font-size: 12px;
   }
+}
+
+/* ---------------------------------------------------------------- realidade aumentada (celular) */
+/* Sobre a câmera só ficam a barra de RA, os painéis abertos e os avisos — o resto da interface sai. */
+body.in-ar :is(.hud-top, .toolbar, .toolbar-restore, .vehicle-card, .callouts, .hint, .help-panel, .tooltip, .cabin-enter, .cabin-bar) {
+  display: none !important;
+}
+.ar-bar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  padding: 10px;
+  border-radius: 18px;
+  background: rgba(8, 17, 31, 0.78);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(10px);
+}
+.ar-status {
+  margin: 0 4px 8px;
+  font-size: 13px;
+  text-align: center;
+  color: var(--text);
+}
+.ar-actions {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.ar-actions button {
+  min-height: 42px;
+  padding: 6px 4px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: rgba(0, 184, 255, 0.1);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ar-actions button[aria-pressed="true"] {
+  color: #04121f;
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--blue), var(--cyan));
+}
+.ar-actions .ar-exit {
+  border-color: rgba(255, 159, 67, 0.6);
+  background: rgba(255, 159, 67, 0.16);
+}
+/* Painéis acima da barra de RA (--ar-bar-h: altura real da barra, medida pelo hud.js). */
+body.in-ar :is(.component-panel, .energy-panel) {
+  bottom: calc(max(14px, env(safe-area-inset-bottom)) + var(--ar-bar-h, 140px) + 8px) !important;
+  top: auto !important;
+  left: 12px !important;
+  right: 12px !important;
+  width: auto !important;
+  max-height: 46dvh;
+}
+body.in-ar .toast {
+  top: max(16px, env(safe-area-inset-top));
+}
+/* Com um painel aberto, a dica da barra sai (o painel já diz o que fazer) e sobra tela para o carro. */
+body.in-ar:is(.cp-open, .energy-open) .ar-status {
+  display: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

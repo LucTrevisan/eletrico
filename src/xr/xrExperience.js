@@ -82,10 +82,30 @@ export async function createXRExperience(scene, { floorMeshes, isBlocker, spawn,
     }
   });
 
+  let mode = "vr";
   const api = {
     xr,
     async enter() {
+      mode = "vr";
       return experience.enterXRAsync("immersive-vr", "local-floor", xr.renderTarget);
+    },
+    /** Realidade aumentada (passthrough/câmera). Os recursos de RA são ligados antes por xr/arMode.js. */
+    async enterAR(sessionInit = {}) {
+      mode = "ar";
+      try {
+        return await experience.enterXRAsync("immersive-ar", "local-floor", xr.renderTarget, sessionInit);
+      } catch (err) {
+        mode = "vr";
+        throw err;
+      }
+    },
+    /** Sessão atual (ou a última) é de realidade aumentada. */
+    get isAR() {
+      return mode === "ar";
+    },
+    /** Celular em RA: a interface HTML fica sobre a imagem da câmera (WebXR DOM Overlay). */
+    get domOverlay() {
+      return mode === "ar" && !!experience.sessionManager.session?.domOverlayState;
     },
     async exit() {
       if (experience.state === WebXRState.IN_XR) await experience.exitXRAsync();

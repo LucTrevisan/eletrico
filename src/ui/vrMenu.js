@@ -87,8 +87,8 @@ export function createVRMenu(scene, { onToggleXRay, onToggleEnergy, onToggleExpl
   const energyButton = makeButton(rows[0], "vr-btn-energy", "Energia", PALETTE.blue, () => onToggleEnergy?.());
   const explodeButton = makeButton(rows[0], "vr-btn-explode", "EXPLODIR", PALETTE.orange, () => onToggleExplode?.());
   const turntableButton = makeButton(rows[1], "vr-btn-turntable", "Girar plataforma", PALETTE.cyan, () => onToggleTurntable?.());
-  makeButton(rows[1], "vr-btn-spawn", "Voltar ao início", PALETTE.blue, () => onReturnToSpawn?.());
-  makeButton(rows[1], "vr-btn-exit", "Sair do VR", PALETTE.orange, () => onExitVR?.());
+  const spawnButton = makeButton(rows[1], "vr-btn-spawn", "Voltar ao início", PALETTE.blue, () => onReturnToSpawn?.());
+  const exitButton = makeButton(rows[1], "vr-btn-exit", "Sair do VR", PALETTE.orange, () => onExitVR?.());
 
   const HINTS = {
     controllers:
@@ -96,6 +96,9 @@ export function createVRMenu(scene, { onToggleXRay, onToggleEnergy, onToggleExpl
     hands:
       "Mãos: pinça rápida = selecionar · pinça longa no piso = teleporte\nOlhe para o pulso esquerdo e toque em MENU para trazer este painel",
   };
+  HINTS.ar = "Realidade aumentada: ande ao redor do carro\nGatilho ou pinça numa peça: informações · B ou Y: trazer este painel";
+  let arMode = false;
+  let inputMode = "controllers";
   const hint = new TextBlock("vr-menu-hint", HINTS.controllers);
   hint.color = PALETTE.text;
   hint.alpha = 0.6;
@@ -162,7 +165,19 @@ export function createVRMenu(scene, { onToggleXRay, onToggleEnergy, onToggleExpl
     },
     /** "controllers" | "hands": troca as dicas de uso. */
     setInputMode(mode) {
-      hint.text = HINTS[mode] ?? HINTS.controllers;
+      inputMode = mode;
+      hint.text = arMode ? HINTS.ar : HINTS[mode] ?? HINTS.controllers;
+    },
+    /** Realidade aumentada: mesmos botões, com "Reposicionar carro" e "Sair da RA" (sem teleporte). */
+    setARMode(on) {
+      arMode = on;
+      if (spawnButton.textBlock) spawnButton.textBlock.text = on ? "Reposicionar carro" : "Voltar ao início";
+      if (exitButton.textBlock) exitButton.textBlock.text = on ? "Sair da RA" : "Sair do VR";
+      hint.text = on ? HINTS.ar : HINTS[inputMode] ?? HINTS.controllers;
+    },
+    /** Linha de status (ex.: instruções para posicionar o carro na RA). */
+    setStatus(text) {
+      status.text = text;
     },
     setTurntableState(on) {
       status.text = on ? "Plataforma girando" : "Plataforma parada";
