@@ -22,6 +22,7 @@ import { SceneInstrumentation, TransformNode, Vector3 } from "./babylon.js";
 import { SHOWROOM, SIMULATION, URL_PARAMS, VEHICLE, VEHICLE_MODELS } from "./config.js";
 import { applyResolution, createCamera, createEngine, createScene, createViewController } from "./scene/createScene.js";
 import { createShowroom } from "./scene/environment.js";
+import { createCabinView, findDriverSeat } from "./scene/cabinView.js";
 import { createLighting } from "./scene/lighting.js";
 import { playIntro, tween } from "./scene/presentation.js";
 import { createAdaptiveQuality, detectQuality, getPreset } from "./scene/quality.js";
@@ -93,6 +94,7 @@ async function boot() {
 
   // ------------------------------------------------------------------ B) veículo
   let vehicle = null;
+  let seat = null; // banco do motorista (vista interna), medido antes da fusão de malhas
   try {
     hud.setLoaderStatus("Localizando o modelo 3D…");
     const model = await resolveModel(VEHICLE_MODELS);
@@ -101,6 +103,7 @@ async function boot() {
     hud.setProgress(1);
     hud.setLoaderStatus("Preparando materiais e iluminação…");
     tuneMaterials(vehicle, quality);
+    seat = findDriverSeat(vehicle, turntable, vehicle.dims);
     organizeVehicle(vehicle, VEHICLE);
     logVehicle(vehicle);
   } catch (err) {
@@ -242,6 +245,7 @@ async function boot() {
         // Celular: tocar fora das peças fecha a seleção (e a legenda dela).
         onEmptyTap: () => mobileUI() && panel.openId && clearSelection(),
         onHover: (id, x, y) => {
+          if (cabin?.active) id = null;
           canvas.style.cursor = id ? "pointer" : "";
           if (!id) return hud.hideTooltip();
           const doorHint = id === "portas" && doors && !xray?.on;
@@ -291,7 +295,7 @@ async function boot() {
   /** Seleciona um componente: destaca, abre o painel e aproxima a câmera (desktop). */
   function selectComponent(id, mesh) {
     const item = componentItems[id];
-    if (!item || !selection) return;
+    if (!item || !selection || cabin?.active || cabinXR?.seated) return; // dentro do carro: só olhar ao redor
     userTookControl = true;
     // Portas: o clique (mouse, toque, gatilho ou pinça) abre/fecha a porta clicada.
     if (id === "portas" && doors && mesh && !mesh.metadata?.evxr?.labelFor && !explode?.exploded) {
@@ -601,6 +605,7 @@ async function boot() {
     if (!explode) return hud.toast("Vista explodida indisponível neste modelo.");
     if (on === explode.exploded) return;
     userTookControl = true;
+    if (on && cabinXR?.seated) cabinXR.exit(); // VR: as peças se afastam — o usuário sai do carro antes
     if (on && energy.on) setEnergy(false);
     clearSelection();
     doors?.closeAll();
@@ -618,8 +623,56 @@ async function boot() {
 
   function toggleTurntable() {
     if (energy.on) return hud.toast("A plataforma fica parada durante o fluxo de energia.");
+    if (cabinXR?.seated) return; // sentado no carro, a plataforma não gira
     userTookControl = true;
     setTurntable(!showroom.turntable.spinning);
+  }
+
+  // ------------------------------------------------------------------ C5) vista interna (dentro do carro)
+  // Desktop/celular: câmera própria que entra pela porta do motorista. VR: ver xr/cabinXR.js.
+  let cabin = null;
+  let cabinXR = null; // criado junto com o WebXR
+  const driverDoor = seat && doors ? doors.nearest(seat.eye) : null;
+  if (vehicle && seat) {
+    cabin = createCabinView(scene, {
+      mainCamera: camera,
+      canvas,
+      parent: turntable,
+      seat,
+      dims,
+      door: driverDoor,
+      views,
+      onChange: (state) => {
+        hud.setCabin(state);
+        // Dentro do carro, glow e espelho da plataforma não acrescentam nada (e o brilho do anel de LED
+        // apareceria por cima do painel): desligados até a saída — também poupa dois passes de renderização.
+        if (state === "entering") {
+          showroom.setGlowEnabled(false);
+          showroom.setMirrorEnabled(false);
+        }
+        if (state === "in" && !mobileUI()) hud.toast("As setas também giram o olhar · Esc sai do carro.", 3500);
+        if (state === "out") {
+          showroom.setGlowEnabled(quality.glow);
+          showroom.setMirrorEnabled(quality.mirror);
+          hud.setActiveView("hero");
+        }
+      },
+    });
+  }
+
+  function enterCabin() {
+    if (!cabin || cabin.active || xrApi?.inXR) return;
+    userTookControl = true;
+    if (energy.on) setEnergy(false);
+    if (explode?.exploded) setExploded(false);
+    clearSelection();
+    xray?.set(false);
+    hud.closeHelp();
+    hud.setActiveView(null);
+    views.cancel();
+    setTurntable(false);
+    alignTurntable(); // a saída termina na vista inicial, com o carro de frente-esquerda
+    cabin.enter();
   }
 
   hud.bind({
@@ -640,12 +693,17 @@ async function boot() {
     onSelectComponent: (id) => selectComponent(id),
     onEscape: () => (panel.openId ? clearSelection() : energy.on && setEnergy(false)),
     onEnterVR: () => enterVR(),
+    onEnterCabin: enterCabin,
+    onExitCabin: () => cabin?.exit(),
   });
   hud.setCredit(vehicle?.model.credit);
 
   // Painéis abertos deslocam o carro para o centro da área livre da tela (consulta leve, 4×/s).
   setInterval(() => {
     if (!xrApi?.inXR) views.setScreenInsets(hud.getInsets());
+    hud.setCabinAvailable(
+      !!cabin && cabin.state === "out" && !!doors?.anyOpen && !explode?.exploded && !energy.on && !xrApi?.inXR,
+    );
   }, 250);
   // Ao arrastar/zoom manual, nenhuma vista predefinida fica marcada como ativa.
   for (const type of ["pointerdown", "wheel"]) {
@@ -664,8 +722,8 @@ async function boot() {
   const adaptive = createAdaptiveQuality(engine, quality, (preset, fps) => {
     quality = preset;
     applyResolution(engine, preset);
-    showroom.setMirrorEnabled(preset.mirror);
-    showroom.setGlowEnabled(preset.glow);
+    showroom.setMirrorEnabled(preset.mirror && !cabin?.active); // dentro do carro ficam desligados
+    showroom.setGlowEnabled(preset.glow && !cabin?.active);
     lighting.setShadowsEnabled(preset.shadows);
     hud.toast(`Qualidade ajustada para “${preset.label}” para manter a fluidez (${Math.round(fps)} fps).`, 4500);
   });
@@ -676,6 +734,7 @@ async function boot() {
 
   async function enterVR() {
     if (!xrApi) return;
+    cabin?.exitNow(); // a câmera do showroom precisa estar ativa ao entrar (e ao voltar) do VR
     try {
       await xrApi.enter();
     } catch (err) {
@@ -707,6 +766,7 @@ async function boot() {
   }
 
   function onExitXR() {
+    cabinXR?.reset();
     clearSelection();
     labels?.refresh(); // de volta às legendas em tela
     explodeLabels?.refresh();
@@ -735,7 +795,10 @@ async function boot() {
         onToggleEnergy: () => setEnergy(!energy.on),
         onToggleExplode: () => setExploded(!explode?.exploded),
         onToggleTurntable: toggleTurntable,
-        onReturnToSpawn: () => xrApi?.returnToSpawn(),
+        onReturnToSpawn: () => {
+          cabinXR?.reset(); // sentado no carro: volta a ficar em pé
+          xrApi?.returnToSpawn();
+        },
         onExitVR: () => xrApi?.exit(),
       });
       vrMenu.setTurntableState(showroom.turntable.spinning);
@@ -753,9 +816,10 @@ async function boot() {
   } else {
     try {
       // WebXR e o painel 3D (Babylon GUI) só são baixados aqui, em dispositivos com VR.
-      const [{ createXRExperience }, { setupXRInteractions }] = await Promise.all([
+      const [{ createXRExperience }, { setupXRInteractions }, { createCabinXR }] = await Promise.all([
         import("./xr/xrExperience.js"),
         import("./xr/interactions.js"),
+        import("./xr/cabinXR.js"),
         ensureVRMenu(),
       ]);
       xrApi = await createXRExperience(scene, {
@@ -770,6 +834,23 @@ async function boot() {
         onSummonMenu: () => vrMenu.summon(xrApi.camera),
         onInputModeChange: (mode) => vrMenu.setInputMode(mode),
       });
+      if (seat && driverDoor) {
+        cabinXR = createCabinXR(scene, {
+          xrApi,
+          parent: turntable,
+          seat,
+          dims,
+          door: driverDoor,
+          raycastBlockers: () => scene.meshes.filter((m) => m.metadata?.evxr),
+          menuMesh: vrMenu.mesh,
+          onSeatedChange: (on) => {
+            if (!on) return;
+            clearSelection();
+            showroom.turntable.halt();
+            setTurntable(false);
+          },
+        });
+      }
       hud.setVR("available");
     } catch (err) {
       console.warn("[EV XR] WebXR indisponível:", err);
@@ -811,6 +892,20 @@ async function boot() {
     },
     /** Abre/fecha todas as portas. */
     portas: () => toggleAllDoors(),
+    /** Entra (true) ou sai (false) do carro na vista interna. */
+    interior(on = !cabin?.active) {
+      if (on) enterCabin();
+      else cabin?.exit();
+      return cabin?.state;
+    },
+    /** VR: senta no banco do motorista (true) ou sai do carro (false). */
+    sentarVR(on = !cabinXR?.seated) {
+      if (on) cabinXR?.enter();
+      else cabinXR?.exit();
+      return cabinXR?.seated;
+    },
+    /** Banco do motorista detectado (local do prato). */
+    banco: () => seat && { olhos: seat.eye.asArray().map((v) => +v.toFixed(3)), lado: seat.side, volante: seat.steering?.asArray().map((v) => +v.toFixed(3)) },
     /** Liga/desliga o fluxo de energia; `aba`: "accel" | "regen" | "charge". */
     energia(on = !energy.on, aba) {
       setEnergy(on);

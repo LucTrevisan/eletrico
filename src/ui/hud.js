@@ -44,6 +44,9 @@ export function createHud() {
     toolbarRestore: $("toolbarRestore"),
     componentPanel: $("componentPanel"),
     energyPanel: $("energyPanel"),
+    cabinEnter: $("cabinEnter"),
+    cabinBar: $("cabinBar"),
+    cabinExit: $("cabinExit"),
   };
   const viewButtons = [...document.querySelectorAll("[data-view]")];
   const isNarrow = () => window.matchMedia("(max-width: 720px)").matches;
@@ -128,10 +131,19 @@ export function createHud() {
   el.helpClose.addEventListener("click", () => setHelp(false));
   el.retryButton.addEventListener("click", () => window.location.reload());
 
+  // Vista interna (dentro do carro): só a saída fica na tela; os atalhos esperam a volta (exceto Esc).
+  let inCabin = false;
+  el.cabinEnter.addEventListener("click", () => handlers.onEnterCabin?.());
+  el.cabinExit.addEventListener("click", () => handlers.onExitCabin?.());
+
   const viewKeys = { 0: "hero", 1: "front", 2: "side", 3: "rear", 4: "top" };
   window.addEventListener("keydown", (e) => {
     if (e.target instanceof HTMLElement && e.target.closest("input, textarea, select")) return;
     if (e.altKey || e.ctrlKey || e.metaKey) return;
+    if (inCabin) {
+      if (e.key === "Escape") handlers.onExitCabin?.();
+      return;
+    }
     if (viewKeys[e.key]) handlers.onView?.(viewKeys[e.key]);
     else if (e.key === " " && !(e.target instanceof HTMLButtonElement)) {
       e.preventDefault();
@@ -259,6 +271,23 @@ export function createHud() {
     setCredit(text) {
       el.vehicleCredit.textContent = text ?? "";
       el.vehicleCredit.hidden = !text;
+    },
+
+    /** Botão "Entrar no carro" (aparece com uma porta aberta). */
+    setCabinAvailable(on) {
+      if (el.cabinEnter.hidden === !on) return;
+      el.cabinEnter.hidden = !on;
+      if (on) dismissHint(); // ocupam o mesmo lugar, acima da barra
+    },
+    /** state: "out" | "entering" | "in" | "leaving". */
+    setCabin(state) {
+      inCabin = state !== "out";
+      document.body.classList.toggle("in-cabin", inCabin);
+      el.cabinBar.hidden = state !== "in";
+      if (inCabin) {
+        el.cabinEnter.hidden = true;
+        el.tooltip.hidden = true;
+      }
     },
 
     /** Layout de celular (em pé ou deitado). */

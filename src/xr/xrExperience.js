@@ -96,6 +96,17 @@ export async function createXRExperience(scene, { floorMeshes, isBlocker, spawn,
     get camera() {
       return experience.camera;
     },
+    /**
+     * Põe a cabeça do usuário em `position` (inclusive a altura), olhando na direção `dir` — só gira
+     * em torno de Y. Usado para sentar no banco do motorista e para sair do carro.
+     */
+    placeAt(position, dir) {
+      const cam = experience.camera;
+      cam.position.copyFrom(position);
+      const targetYaw = Math.atan2(dir.x, dir.z);
+      const currentYaw = cam.rotationQuaternion.toEulerAngles().y;
+      cam.rotationQuaternion.multiplyInPlace(Quaternion.FromEulerAngles(0, targetYaw - currentYaw, 0));
+    },
     /** Leva o usuário de volta ao ponto de partida, de frente para o carro (só gira em torno de Y). */
     returnToSpawn() {
       const cam = experience.camera;

@@ -84,7 +84,7 @@ export function createDoors(scene, { items, parent }) {
     const open = tailgate
       ? closed.multiply(Quaternion.RotationAxis(Axis.X, (TAILGATE_DEG * Math.PI) / 180))
       : closed.multiply(Quaternion.RotationAxis(Axis.Y, ((left ? 1 : -1) * SIDE_DEG * Math.PI) / 180));
-    doors.push({ key, hinge, closed, open, isOpen: false, tailgate });
+    doors.push({ key, hinge, closed, open, isOpen: false, tailgate, center: box.center.clone() });
   }
 
   function animate(door, toOpen, delay = 0) {
@@ -131,6 +131,21 @@ export function createDoors(scene, { items, parent }) {
     },
     closeAll({ stagger = false } = {}) {
       doors.forEach((d, i) => d.isOpen && animate(d, false, stagger ? i * 6 : 0));
+    },
+    /** Porta lateral mais próxima de um ponto (local do prato) — ex.: a do motorista, ao lado do banco. */
+    nearest(point) {
+      const d = doors
+        .filter((x) => !x.tailgate)
+        .sort((a, b) => Vector3.DistanceSquared(a.center, point) - Vector3.DistanceSquared(b.center, point))[0];
+      if (!d) return null;
+      return {
+        get isOpen() {
+          return d.isOpen;
+        },
+        set(open) {
+          if (d.isOpen !== open) animate(d, open);
+        },
+      };
     },
   };
 }

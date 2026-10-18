@@ -190,6 +190,16 @@
 
       <p id="hint" class="hint">Arraste para girar · Role ou faça pinça para aproximar</p>
 
+      <!-- Vista interna: aparece com uma porta aberta; dentro do carro, só a barra de saída fica na tela. -->
+      <button id="cabinEnter" class="cabin-enter" type="button" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 17h14M6 17l1.2-5.2A2 2 0 0 1 9.15 10h5.7a2 2 0 0 1 1.95 1.8L18 17M8 17v2M16 17v2M9 13.5h6" /></svg>
+        Entrar no carro
+      </button>
+      <div id="cabinBar" class="cabin-bar" hidden>
+        <span class="cabin-hint">Arraste para olhar ao redor</span>
+        <button id="cabinExit" class="cabin-exit" type="button">Sair do carro</button>
+      </div>
+
       <aside id="helpPanel" class="help-panel" hidden aria-label="Como usar">
         <header>
           <h3>Como explorar</h3>
