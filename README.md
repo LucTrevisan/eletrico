@@ -73,6 +73,21 @@ gatilho. Controles/mãos são detectados sozinhos e as dicas do painel mudam con
 - **Portas:** clique (mouse, toque, gatilho ou pinça) numa porta para abri-la ou fechá-la — quatro portas e a tampa
   traseira, cada uma com sua dobradiça. Tecla **P** (ou o botão no painel da peça "Portas") abre/fecha todas.
 
+## Dentro do carro (vista interna e imersão em VR)
+
+- **Computador e celular:** com uma porta aberta, aparece o botão **Entrar no carro**. A câmera entra pela porta do
+  motorista e senta no banco, na altura dos olhos de quem dirige, de frente para o volante, o painel de instrumentos
+  e a central multimídia; a porta fecha. **Arraste** (mouse ou dedo) para olhar em volta — teto solar, retrovisor,
+  bancos, portas — e use **Sair do carro** (ou **Esc**) para voltar à vista inicial. Enquanto está dentro, a
+  interface some e glow/espelho da plataforma ficam desligados (menos custo de GPU).
+- **Meta Quest:** abra a porta do motorista e aponte para **Entrar no carro** (gatilho ou pinça): você é colocado
+  sentado ao volante — a altura dos olhos é a de quem dirige, esteja você em pé ou sentado numa cadeira — e a porta
+  fecha. Dá para olhar e inclinar a cabeça livremente. **Sair do carro** fica junto à coluna da porta; o painel 3D
+  (B/Y) continua acessível e "Voltar ao início" também tira você do carro. Sentado, a plataforma não gira.
+- O banco é localizado pelo volante do modelo (`evxr.banco()` no console mostra a posição); `evxr.interior()` e
+  `evxr.sentarVR()` entram/saem para testes. Código: `src/scene/cabinView.js` e `src/xr/cabinXR.js` (este só é
+  baixado em dispositivos com VR).
+
 ## Fluxo de energia e simulação
 
 Botão **Energia** (tecla **E**, ou no painel 3D em VR). O raio X liga sozinho e o caminho da energia aparece
@@ -233,6 +248,7 @@ src/
 ├── config.js               modelo, paleta, medidas, VR e simulação — tudo que muda ao trocar o GLB
 ├── scene/
 │   ├── createScene.js      motor, cena, câmera orbital, vistas predefinidas e enquadramentos
+│   ├── cabinView.js        vista interna: entrar no carro pela porta do motorista (desktop/celular)
 │   ├── environment.js      showroom: piso, plataforma giratória, LEDs, halo, título, placa e totem da escola
 │   ├── lighting.js         ambiente de estúdio + luzes direcionais + sombras
 │   ├── presentation.js     tween e animação de abertura
@@ -253,6 +269,7 @@ src/
 │   └── energyContent.js    textos dos modos A, B e C
 ├── xr/
 │   ├── support.js          detecção de suporte a VR (sem Babylon: entra no pacote inicial)
+│   ├── cabinXR.js          VR: sentar no banco do motorista e sair do carro (sob demanda)
 │   ├── xrExperience.js     WebXR (sob demanda): entrada em VR, teleporte, snap turn, mãos, ponto de partida
 │   └── interactions.js     botões B/Y e menu de pulso (mãos) para chamar o painel
 ├── ui/
